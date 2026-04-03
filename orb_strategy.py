@@ -3,6 +3,7 @@
 generate_orb_signal  — stateless, returns LONG/SHORT/FLAT per bar snapshot.
 TradeState           — tracks the retest flow across Streamlit reruns.
 update_retest_state  — advances the state machine one tick.
+check_exit           — evaluates stop loss and profit target on IN_POSITION.
 
 Expected DataFrame columns: open, high, low, close
 Index: any (positional slice used)
@@ -49,6 +50,8 @@ class TradeState:
         self.breakout_level = None
         self.direction = None
         self.entry_price = None
+        self.stop_price = None
+        self.target_price = None
         self.retest_confirmed = False
         self.has_traded = False
         self.retest_start_index = None
@@ -58,6 +61,8 @@ class TradeState:
         self.breakout_level = None
         self.direction = None
         self.entry_price = None
+        self.stop_price = None
+        self.target_price = None
         self.retest_confirmed = False
         self.has_traded = False
         self.retest_start_index = None
@@ -102,7 +107,12 @@ def update_retest_state(state, signal, price, orb_high, orb_low, params,
     if state.state == "READY_TO_ENTER" and state.direction == "LONG":
         # Require impulse strength — price must clear breakout by min_break_strength
         if price > state.breakout_level + min_break_strength:
+            atr = float(params.get("_atr_value", 2.0))  # injected by caller
+            stop_mult = float(params.get("stop_loss_atr", 1.0))
+            tp_mult = float(params.get("take_profit_atr", 2.0))
             state.entry_price = price
+            state.stop_price = price - (atr * stop_mult)
+            state.target_price = price + (atr * tp_mult)
             state.state = "IN_POSITION"
             state.has_traded = True
             state.retest_confirmed = False
@@ -129,7 +139,12 @@ def update_retest_state(state, signal, price, orb_high, orb_low, params,
     if state.state == "READY_TO_ENTER" and state.direction == "SHORT":
         # Require impulse strength — price must clear breakout by min_break_strength
         if price < state.breakout_level - min_break_strength:
+            atr = float(params.get("_atr_value", 2.0))  # injected by caller
+            stop_mult = float(params.get("stop_loss_atr", 1.0))
+            tp_mult = float(params.get("take_profit_atr", 2.0))
             state.entry_price = price
+            state.stop_price = price + (atr * stop_mult)
+            state.target_price = price - (atr * tp_mult)
             state.state = "IN_POSITION"
             state.has_traded = True
             state.retest_confirmed = False
@@ -138,3 +153,28 @@ def update_retest_state(state, signal, price, orb_high, orb_low, params,
         return state
 
     return state
+
+
+def check_exit(state, price):
+    """Check stop loss and profit target for an IN_POSITION state.
+    Returns (exit_triggered: bool, reason: str, pnl: float)."""
+    if state.state != "IN_POSITION" or state.entry_price is None:
+        return False, "", 0.0
+
+    if state.direction == "LONG":
+        pnl = price - state.entry_price
+        if state.stop_price is not None and price <= state.stop_price:
+            return True, "STOP", state.stop_price - state.entry_price
+        if state.target_price is not None and price >= state.target_price:
+            return True, "TARGET", state.target_price - state.entry_price
+        return False, "", pnl
+
+    if state.direction == "SHORT":
+        pnl = state.entry_price - price
+        if state.stop_price is not None and price >= state.stop_price:
+            return True, "STOP", state.entry_price - state.stop_price
+        if state.target_price is not None and price <= state.target_price:
+            return True, "TARGET", state.entry_price - state.target_price
+        return False, "", pnl
+
+    return False, "", 0.0

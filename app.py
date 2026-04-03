@@ -11,7 +11,7 @@ from datetime import datetime
 from db import get_db, q
 from risk import render_risk_and_pnl_module
 from strategy_manager import render_strategy_manager, get_active_strategies
-from orb_strategy import generate_orb_signal, TradeState, update_retest_state
+from orb_strategy import generate_orb_signal, TradeState, update_retest_state, check_exit
 
 st.set_page_config(page_title="GatSlinger", layout="wide")
 
@@ -270,11 +270,34 @@ else:
 
         ts = st.session_state[state_key]
 
+        # Inject live ATR so the state machine can compute stop/target
+        params["_atr_value"] = atr_value
+
         # Only advance if trade is allowed or we're already tracking
         if trade_allowed or ts.state != "WAITING_BREAKOUT":
             ts = update_retest_state(ts, signal_type, price, orb_high, orb_low, params,
                                        bar_count=len(rth))
             st.session_state[state_key] = ts
+
+        # ── Exit check (stop loss / profit target)
+        if "trade_log" not in st.session_state:
+            st.session_state.trade_log = []
+
+        if ts.state == "IN_POSITION":
+            exited, exit_reason, exit_pnl = check_exit(ts, price)
+            if exited:
+                st.session_state.trade_log.append({
+                    "strategy": name,
+                    "direction": ts.direction,
+                    "entry": round(ts.entry_price, 2),
+                    "exit": round(price, 2),
+                    "stop": round(ts.stop_price, 2) if ts.stop_price else "—",
+                    "target": round(ts.target_price, 2) if ts.target_price else "—",
+                    "pnl": round(exit_pnl, 2),
+                    "reason": exit_reason,
+                })
+                ts.reset()
+                st.session_state[state_key] = ts
 
         # ── Row 4: Retest state display
         state_colors = {
@@ -300,6 +323,19 @@ else:
         rs4.metric("Entry Price", round(ts.entry_price, 2) if ts.entry_price else "—")
         rs5.metric("Bars Since Breakout", f"{bars_since}/{max_retest_bars}" if ts.retest_start_index else "—")
 
+        # ── Row 5: Live P&L when in position
+        if ts.state == "IN_POSITION" and ts.entry_price is not None:
+            _, _, live_pnl = check_exit(ts, price)
+            pnl_color = "green" if live_pnl >= 0 else "red"
+            pc1, pc2, pc3, pc4 = st.columns(4)
+            pc1.metric("Live P&L (pts)", round(live_pnl, 2))
+            pc2.metric("Stop", round(ts.stop_price, 2) if ts.stop_price else "—")
+            pc3.metric("Target", round(ts.target_price, 2) if ts.target_price else "—")
+            dist_stop = abs(price - ts.stop_price) if ts.stop_price else 0
+            dist_target = abs(price - ts.target_price) if ts.target_price else 0
+            pc4.metric("R:R from here",
+                       f"{dist_target:.1f} / {dist_stop:.1f}" if dist_stop > 0 else "—")
+
         # ── Reason line
         reason = signal.get("reason", "")
         color = {"LONG": "green", "SHORT": "red"}.get(signal_type, "#94a3b8")
@@ -309,6 +345,32 @@ else:
             unsafe_allow_html=True
         )
         st.markdown("---")
+
+# ── Trade Log ────────────────────────────────────────────────
+if "trade_log" not in st.session_state:
+    st.session_state.trade_log = []
+
+if st.session_state.trade_log:
+    st.subheader("Trade Log")
+    log_df = pd.DataFrame(st.session_state.trade_log)
+    total_pnl = log_df["pnl"].sum()
+    wins = (log_df["pnl"] > 0).sum()
+    losses = (log_df["pnl"] <= 0).sum()
+    win_rate = (wins / len(log_df) * 100) if len(log_df) > 0 else 0
+
+    lc1, lc2, lc3, lc4 = st.columns(4)
+    lc1.metric("Trades", len(log_df))
+    lc2.metric("Total P&L (pts)", round(total_pnl, 2))
+    lc3.metric("Win Rate", f"{win_rate:.0f}%")
+    lc4.metric("W / L", f"{wins} / {losses}")
+
+    st.dataframe(log_df, use_container_width=True, hide_index=True)
+
+    if st.button("Clear Trade Log"):
+        st.session_state.trade_log = []
+        st.rerun()
+
+    st.markdown("---")
 
 # ============================================================
 # MAIN — Fund Accounting (PostgreSQL)
