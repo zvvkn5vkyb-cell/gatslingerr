@@ -2,7 +2,7 @@
 
 # ibkr.py handles the critical event-loop-before-import dance.
 # Import it first so ib_insync gets a valid loop.
-from ibkr import IB, safe_float, fmt_money, fmt_pct
+from ibkr import IB, safe_float, fmt_money, fmt_pct, get_ibkr_bars
 
 import streamlit as st
 import pandas as pd
@@ -157,11 +157,12 @@ else:
     st.info("No active strategies. Enable one in Strategy Manager.")
 
 # ── Strategy Signals ─────────────────────────────────────────
-import numpy as np
+import pytz
 
 st.subheader("Strategy Signals")
 
 active_strategies = get_active_strategies()
+ib_live = ib and ib.isConnected()
 
 if not active_strategies:
     st.info("No active strategies to evaluate.")
@@ -170,18 +171,43 @@ else:
         st.markdown(f"### {name}")
 
         params = cfg.get("params", {})
+        asset = cfg.get("asset", "")
 
-        # Simulated 1-min candles — replace with live IBKR bars later
-        _n = 100
-        _base = np.random.normal(100, 1, _n)
-        data = pd.DataFrame({
-            "open":  _base,
-            "high":  _base + np.abs(np.random.normal(1, 0.3, _n)),
-            "low":   _base - np.abs(np.random.normal(1, 0.3, _n)),
-            "close": _base + np.random.normal(0, 0.5, _n),
-        })
+        # ── Get data: live IBKR bars when connected, else skip
+        if not ib_live:
+            st.warning(f"{name}: Connect to IBKR for live signals.")
+            continue
 
-        signal = generate_orb_signal(data, params)
+        raw = get_ibkr_bars(ib, symbol=asset)
+        if raw is None or raw.empty:
+            st.warning(f"{name}: No IBKR data returned for {asset}.")
+            continue
+
+        # ── Session slicing: today only, RTH 09:30–16:00 ET
+        eastern = pytz.timezone("US/Eastern")
+        data = raw.tz_localize("UTC").tz_convert(eastern) if raw.index.tz is None else raw.tz_convert(eastern)
+
+        today = data.index.date[-1]
+        data = data[data.index.date == today]
+
+        session_open = params.get("session_open", "09:30")
+        session_close = params.get("session_close", "16:00")
+        rth = data.between_time(session_open, session_close)
+
+        window = int(params.get("window_minutes", 15))
+
+        if rth.empty:
+            st.info(f"{name}: No RTH data for {today}. Market may be closed.")
+            continue
+
+        if len(rth) < window:
+            st.info(f"{name}: Opening range forming — {len(rth)}/{window} bars.")
+            continue
+
+        # ── Build ORB input: opening range + intraday
+        orb_data = rth.copy()
+
+        signal = generate_orb_signal(orb_data, params)
         signal_type = signal.get("signal", "FLAT")
         price = signal.get("current_close", 0)
         orb_high = signal.get("orb_high", 0)
@@ -208,7 +234,7 @@ else:
         # ── Row 2: ATR filter + trade eligibility
         atr_filter = params.get("atr_filter", False)
         atr_min = params.get("atr_min", 0)
-        atr_value = float(abs(data["high"] - data["low"]).rolling(14).mean().iloc[-1])
+        atr_value = float(abs(rth["high"] - rth["low"]).rolling(14).mean().iloc[-1])
 
         trade_allowed = True
         reason_blocked = None
@@ -222,9 +248,9 @@ else:
             reason_blocked = reason_blocked or "No breakout"
 
         # ── Row 3: Trend context
-        ma_fast = float(data["close"].rolling(10).mean().iloc[-1])
-        ma_slow = float(data["close"].rolling(30).mean().iloc[-1])
-        trend = "UP" if ma_fast > ma_slow else "DOWN"
+        ma_fast = float(rth["close"].rolling(10).mean().iloc[-1])
+        ma_slow = float(rth["close"].rolling(30).mean().iloc[-1])
+        trend = "UP" if ma_fast > ma_slow else "DOWN" if len(rth) >= 30 else "N/A"
 
         colA, colB, colC = st.columns(3)
         colA.metric("ATR (14)", round(atr_value, 2))
@@ -234,6 +260,8 @@ else:
             else:
                 st.error(f"Blocked: {reason_blocked}")
         colC.metric("Trend (10/30 MA)", trend)
+
+        st.caption(f"RTH bars: {len(rth)} | Session: {session_open}–{session_close} ET | Date: {today}")
 
         # ── Reason line
         reason = signal.get("reason", "")

@@ -1,11 +1,17 @@
 """IBKR connection and account helpers — ib_insync wrapper"""
 import asyncio
 
-# Ensure event loop exists BEFORE importing ib_insync.
-# eventkit grabs the loop at import time; Streamlit's ScriptRunner
-# thread may not have one yet.
+# Ensure a standard asyncio event loop is set BEFORE importing ib_insync.
+# Two problems to solve:
+#   1. Streamlit's ScriptRunner thread may have no loop → create one.
+#   2. Streamlit on Python 3.12+ / uvloop installs a uvloop.Loop which
+#      nest_asyncio cannot patch → replace it with a plain asyncio loop.
 try:
-    asyncio.get_event_loop()
+    loop = asyncio.get_event_loop()
+    # Detect uvloop by name — avoid importing uvloop just to check type.
+    if type(loop).__module__.startswith("uvloop"):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 except RuntimeError:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -13,7 +19,7 @@ except RuntimeError:
 import nest_asyncio
 nest_asyncio.apply()
 
-from ib_insync import IB
+from ib_insync import IB, Future, util
 import math
 import pandas as pd
 
@@ -99,6 +105,40 @@ def get_market_price_from_ticker(ticker, fallback=0.0):
         if v is not None and v != 0:
             return v
     return safe_float(fallback)
+
+
+# ── Historical bars ──────────────────────────────────────────
+
+def get_ibkr_bars(ib, symbol="ES", exchange="CME", currency="USD",
+                  duration="1 D", bar_size="1 min"):
+    """Fetch historical bars for a futures contract. Returns a DataFrame
+    with datetime index and OHLCV columns, or None on failure."""
+    contract = Future(symbol, exchange=exchange, currency=currency)
+    qualified = ib.qualifyContracts(contract)
+    if not qualified:
+        return None
+
+    bars = ib.reqHistoricalData(
+        contract,
+        endDateTime="",
+        durationStr=duration,
+        barSizeSetting=bar_size,
+        whatToShow="TRADES",
+        useRTH=False,
+        formatDate=1,
+    )
+
+    if not bars:
+        return None
+
+    df = util.df(bars)
+    if df is None or df.empty:
+        return None
+
+    df = df.rename(columns={"date": "datetime"})
+    df["datetime"] = pd.to_datetime(df["datetime"])
+    df = df.set_index("datetime")
+    return df
 
 
 # ── Positions ────────────────────────────────────────────────
