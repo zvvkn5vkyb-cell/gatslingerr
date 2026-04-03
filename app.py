@@ -182,17 +182,62 @@ else:
         })
 
         signal = generate_orb_signal(data, params)
-        sig = signal.get("signal", "FLAT")
-
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Signal", sig)
-        col2.metric("Current Price", round(signal.get("current_close", 0), 2))
-        col3.metric("ORB High",      round(signal.get("orb_high", 0), 2))
-        col4.metric("ORB Low",       round(signal.get("orb_low", 0), 2))
-
-        reason = signal.get("reason", "")
+        signal_type = signal.get("signal", "FLAT")
+        price = signal.get("current_close", 0)
+        orb_high = signal.get("orb_high", 0)
+        orb_low = signal.get("orb_low", 0)
         orb_range = signal.get("orb_range", 0)
-        color = {"LONG": "green", "SHORT": "red"}.get(sig, "#94a3b8")
+
+        distance_to_high = price - orb_high
+        distance_to_low = orb_low - price
+
+        # ── Row 1: Signal + levels + distance
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Signal", signal_type)
+        col2.metric("Price", round(price, 2))
+        col3.metric("ORB High", round(orb_high, 2))
+        col4.metric("ORB Low", round(orb_low, 2))
+        with col5:
+            if signal_type == "FLAT":
+                st.metric("Dist to Breakout", round(min(abs(distance_to_high), abs(distance_to_low)), 2))
+            elif signal_type == "LONG":
+                st.metric("Breakout Above", round(distance_to_high, 2))
+            elif signal_type == "SHORT":
+                st.metric("Breakout Below", round(distance_to_low, 2))
+
+        # ── Row 2: ATR filter + trade eligibility
+        atr_filter = params.get("atr_filter", False)
+        atr_min = params.get("atr_min", 0)
+        atr_value = float(abs(data["high"] - data["low"]).rolling(14).mean().iloc[-1])
+
+        trade_allowed = True
+        reason_blocked = None
+
+        if atr_filter and atr_value < atr_min:
+            trade_allowed = False
+            reason_blocked = f"Low volatility (ATR {atr_value:.2f} < {atr_min})"
+
+        if signal_type == "FLAT":
+            trade_allowed = False
+            reason_blocked = reason_blocked or "No breakout"
+
+        # ── Row 3: Trend context
+        ma_fast = float(data["close"].rolling(10).mean().iloc[-1])
+        ma_slow = float(data["close"].rolling(30).mean().iloc[-1])
+        trend = "UP" if ma_fast > ma_slow else "DOWN"
+
+        colA, colB, colC = st.columns(3)
+        colA.metric("ATR (14)", round(atr_value, 2))
+        with colB:
+            if trade_allowed:
+                st.success("Trade Allowed")
+            else:
+                st.error(f"Blocked: {reason_blocked}")
+        colC.metric("Trend (10/30 MA)", trend)
+
+        # ── Reason line
+        reason = signal.get("reason", "")
+        color = {"LONG": "green", "SHORT": "red"}.get(signal_type, "#94a3b8")
         st.markdown(
             f'<span style="color:{color};font-size:13px">▶ {reason}</span>'
             f'<span style="color:#94a3b8;font-size:12px;margin-left:16px">ORB range: {orb_range}</span>',
