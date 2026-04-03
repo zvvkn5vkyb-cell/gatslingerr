@@ -11,6 +11,7 @@ from datetime import datetime
 from db import get_db, q
 from risk import render_risk_and_pnl_module
 from strategy_manager import render_strategy_manager, get_active_strategies
+from orb_strategy import generate_orb_signal
 
 st.set_page_config(page_title="GatSlinger", layout="wide")
 
@@ -154,6 +155,50 @@ if active_strategies:
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 else:
     st.info("No active strategies. Enable one in Strategy Manager.")
+
+# ── Strategy Signals ─────────────────────────────────────────
+import numpy as np
+
+st.subheader("Strategy Signals")
+
+active_strategies = get_active_strategies()
+
+if not active_strategies:
+    st.info("No active strategies to evaluate.")
+else:
+    for name, cfg in active_strategies.items():
+        st.markdown(f"### {name}")
+
+        params = cfg.get("params", {})
+
+        # Simulated 1-min candles — replace with live IBKR bars later
+        _n = 100
+        _base = np.random.normal(100, 1, _n)
+        data = pd.DataFrame({
+            "open":  _base,
+            "high":  _base + np.abs(np.random.normal(1, 0.3, _n)),
+            "low":   _base - np.abs(np.random.normal(1, 0.3, _n)),
+            "close": _base + np.random.normal(0, 0.5, _n),
+        })
+
+        signal = generate_orb_signal(data, params)
+        sig = signal.get("signal", "FLAT")
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Signal", sig)
+        col2.metric("Current Price", round(signal.get("current_close", 0), 2))
+        col3.metric("ORB High",      round(signal.get("orb_high", 0), 2))
+        col4.metric("ORB Low",       round(signal.get("orb_low", 0), 2))
+
+        reason = signal.get("reason", "")
+        orb_range = signal.get("orb_range", 0)
+        color = {"LONG": "green", "SHORT": "red"}.get(sig, "#94a3b8")
+        st.markdown(
+            f'<span style="color:{color};font-size:13px">▶ {reason}</span>'
+            f'<span style="color:#94a3b8;font-size:12px;margin-left:16px">ORB range: {orb_range}</span>',
+            unsafe_allow_html=True
+        )
+        st.markdown("---")
 
 # ============================================================
 # MAIN — Fund Accounting (PostgreSQL)
