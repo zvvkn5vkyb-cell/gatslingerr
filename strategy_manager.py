@@ -117,6 +117,7 @@ def render_strategy_manager():
         stop_loss_atr     = st.number_input("Stop Loss ATR",      min_value=0.1, value=float(p.get("stop_loss_atr", 1.0)))
         take_profit_atr   = st.number_input("Take Profit ATR",    min_value=0.1, value=float(p.get("take_profit_atr", 2.0)))
         retest_tolerance  = st.number_input("Retest Tolerance",   min_value=0.1, value=float(p.get("retest_tolerance", 1.0)))
+        min_break_strength= st.number_input("Min Break Strength", min_value=0.1, value=float(p.get("min_break_strength", 0.5)))
         session_open      = st.text_input(  "Session Open",                      value=p.get("session_open", "09:30"))
         session_close     = st.text_input(  "Session Close",                     value=p.get("session_close", "16:00"))
 
@@ -141,6 +142,7 @@ def render_strategy_manager():
                     "stop_loss_atr": stop_loss_atr,
                     "take_profit_atr": take_profit_atr,
                     "retest_tolerance": retest_tolerance,
+                    "min_break_strength": min_break_strength,
                     "session_open": session_open,
                     "session_close": session_close,
                 },

@@ -50,6 +50,7 @@ class TradeState:
         self.direction = None
         self.entry_price = None
         self.retest_confirmed = False
+        self.has_traded = False
 
     def reset(self):
         self.state = "WAITING_BREAKOUT"
@@ -57,6 +58,7 @@ class TradeState:
         self.direction = None
         self.entry_price = None
         self.retest_confirmed = False
+        self.has_traded = False
 
 
 def update_retest_state(state, signal, price, orb_high, orb_low, params):
@@ -64,6 +66,7 @@ def update_retest_state(state, signal, price, orb_high, orb_low, params):
     TradeState object (mutated in place) for convenience."""
     buffer = float(params.get("breakout_buffer", 0.0))
     retest_tolerance = float(params.get("retest_tolerance", 1.0))
+    min_break_strength = float(params.get("min_break_strength", 0.5))
 
     # ── LONG flow
     if state.state == "WAITING_BREAKOUT" and signal == "LONG":
@@ -81,10 +84,11 @@ def update_retest_state(state, signal, price, orb_high, orb_low, params):
         return state
 
     if state.state == "READY_TO_ENTER" and state.direction == "LONG":
-        # Require continuation AFTER retest — price must push back above breakout
-        if price > state.breakout_level:
+        # Require impulse strength — price must clear breakout by min_break_strength
+        if price > state.breakout_level + min_break_strength:
             state.entry_price = price
             state.state = "IN_POSITION"
+            state.has_traded = True
             state.retest_confirmed = False
         elif price < state.breakout_level - buffer:
             state.reset()
@@ -106,10 +110,11 @@ def update_retest_state(state, signal, price, orb_high, orb_low, params):
         return state
 
     if state.state == "READY_TO_ENTER" and state.direction == "SHORT":
-        # Require continuation AFTER retest — price must push back below breakout
-        if price < state.breakout_level:
+        # Require impulse strength — price must clear breakout by min_break_strength
+        if price < state.breakout_level - min_break_strength:
             state.entry_price = price
             state.state = "IN_POSITION"
+            state.has_traded = True
             state.retest_confirmed = False
         elif price > state.breakout_level + buffer:
             state.reset()
