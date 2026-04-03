@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GatSlinger — Fund Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0a0e17;
+  --panel: #111827;
+  --border: #1e293b;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --green: #00ff88;
+  --red: #ff4444;
+  --blue: #3b82f6;
+  --yellow: #fbbf24;
+  --purple: #8b5cf6;
+  --orange: #f59e0b;
+  --accent: #00ff88;
+}
+body {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg);
+  color: var(--text);
+  padding: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.header-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+.header-nav {
+  display: flex;
+  gap: 8px;
+}
+.fund-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+.fund-btn:hover, .fund-btn.active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.header-stats {
+  display: flex;
+  gap: 32px;
+}
+.header-stat { text-align: right; }
+.header-stat .label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+.header-stat .value { font-size: 20px; font-weight: 600; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 16px;
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  overflow: hidden;
+}
+.panel-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.col-3 { grid-column: span 3; }
+.col-4 { grid-column: span 4; }
+.col-5 { grid-column: span 5; }
+.col-6 { grid-column: span 6; }
+.col-7 { grid-column: span 7; }
+.col-8 { grid-column: span 8; }
+.col-12 { grid-column: span 12; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(30,41,59,0.5);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.pos { color: var(--green); }
+.neg { color: var(--red); }
+.total-row { font-weight: 700; border-top: 2px solid var(--border); }
+
+/* Flash animations */
+@keyframes flash-green {
+  0% { background: rgba(0,255,136,0.2); }
+  100% { background: transparent; }
+}
+@keyframes flash-red {
+  0% { background: rgba(255,68,68,0.2); }
+  100% { background: transparent; }
+}
+.flash-pos { animation: flash-green 0.5s ease-out; }
+.flash-neg { animation: flash-red 0.5s ease-out; }
+
+/* Alerts */
+.alert-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  background: rgba(30,41,59,0.5);
+}
+.alert-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.alert-dot.critical { background: var(--red); }
+.alert-dot.warning { background: var(--yellow); }
+.alert-dot.info { background: var(--blue); }
+.badge {
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+/* NAV Bridge Waterfall */
+.waterfall-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+.waterfall-label { width: 110px; color: var(--text-dim); flex-shrink: 0; }
+.waterfall-bar-container { flex: 1; height: 20px; position: relative; }
+.waterfall-bar {
+  height: 100%;
+  border-radius: 2px;
+  position: absolute;
+  min-width: 2px;
+}
+.waterfall-value { width: 90px; text-align: right; flex-shrink: 0; font-weight: 500; }
+
+/* Chart container */
+.chart-container { position: relative; height: 200px; }
+
+/* Fee donut */
+.fee-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: center; }
+.fee-list { list-style: none; }
+.fee-list li {
+  display: flex; justify-content: space-between;
+  padding: 4px 0; font-size: 11px;
+  border-bottom: 1px solid rgba(30,41,59,0.3);
+}
+.fee-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+
+/* Status indicators */
+.status-connected { color: var(--green); }
+.status-disconnected { color: var(--red); }
+
+/* Scrollable */
+.scroll-panel { max-height: 300px; overflow-y: auto; }
+.scroll-panel::-webkit-scrollbar { width: 4px; }
+.scroll-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Loading */
+.loading { color: var(--text-dim); font-style: italic; padding: 20px; text-align: center; }
+
+/* Section divider */
+.section-divider {
+  grid-column: span 12;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+.section-divider::before,
+.section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* Fairness status pills */
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.pill-fair { background: rgba(0,255,136,0.15); color: var(--green); }
+.pill-review { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.pill-investigate { background: rgba(255,68,68,0.15); color: var(--red); }
+.pill-position { background: rgba(59,130,246,0.15); color: var(--blue); }
+.pill-na { background: rgba(148,163,184,0.1); color: var(--text-dim); }
+
+/* HWM status */
+.hwm-above { color: var(--green); }
+.hwm-below { color: var(--red); }
+
+/* Mini stat cards */
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.stat-card {
+  background: rgba(30,41,59,0.4);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.stat-card .sc-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.stat-card .sc-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Horizontal bar for dispersion */
+.disp-bar-bg {
+  height: 6px;
+  background: rgba(30,41,59,0.8);
+  border-radius: 3px;
+  overflow: hidden;
+  width: 60px;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.disp-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+/* Tabs */
+.tab-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.tab-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.2s;
+}
+.tab-btn:hover, .tab-btn.active {
+  background: var(--purple);
+  color: #fff;
+  border-color: var(--purple);
+}
+
+@media (max-width: 1200px) {
+  .col-3, .col-4, .col-5, .col-6, .col-7, .col-8 { grid-column: span 12; }
+  .header { flex-direction: column; gap: 12px; }
+  .header-stats { gap: 16px; }
+  .stat-cards { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-title">GATSLINGER</div>
+  <div class="header-nav" id="fund-nav"></div>
+  <div class="header-stats" id="header-stats"></div>
+</div>
+
+<!-- GRID -->
+<div class="grid">
+  <!-- NAV Bridge -->
+  <div class="panel col-4">
+    <div class="panel-title">NAV Bridge (Waterfall)</div>
+    <div id="nav-bridge" class="scroll-panel"><div class="loading">Loading...</div></div>
+  </div>
+
+  <!-- NAV History Chart -->
+  <div class="panel col-8">
+    <div class="panel-title">NAV History</div>
+    <div class="chart-container"><canvas id="nav-chart"></canvas></div>
+  </div>
+
+  <!-- P&L Monitor (IBKR-style) -->
+  <div class="panel col-12">
+    <div class="panel-title">
+      P&L Monitor
+      <span id="pnl-status" class="status-disconnected">&#9679; disconnected</span>
+    </div>
+    <div id="pnl-table"><div class="loading">Loading...</div></div>
+  </div>
+
+  <!-- Positions -->
+  <div class="panel col-6">
+    <div class="panel-title">Positions</div>
+    <div id="positions-table" class="scroll-panel"><div class="loading">Loading...</div></div>
+  </div>
+
+  <!-- Fee Breakdown -->
+  <div class="panel col-6">
+    <div class="panel-title">Fee Breakdown</div>
+    <div id="fee-panel"><div class="loading">Loading...</div></div>
+  </div>
+
+  <!-- Investors -->
+  <div class="panel col-6">
+    <div class="panel-title">Investor Allocations</div>
+    <div id="investor-table" class="scroll-panel"><div class="loading">Loading...</div></div>
+  </div>
+
+  <!-- Alerts -->
+  <div class="panel col-6">
+    <div class="panel-title">
+      Alerts
+      <span id="alert-badge" class="badge" style="display:none">0</span>
+    </div>
+    <div id="alert-panel" class="scroll-panel"><div class="loading">Loading...</div></div>
+  </div>
+
+  <!-- ============ OPERATIONAL: PRICING CONSISTENCY ============ -->
+  <div class="section-divider">
+    <span class="section-label">Pricing Consistency (Operational)</span>
+  </div>
+
+  <!-- Pricing Dispersion -->
+  <div class="panel col-5">
+    <div class="panel-title">
+      Same-Day NAV Dispersion
+      <span id="pricing-count" style="font-size:10px;color:var(--text-dim)"></span>
+    </div>
+    <div id="pricing-stats"></div>
+    <div id="pricing-table" class="scroll-panel"><div class="loading">Loading...</div></div>
+  </div>
+
+  <!-- Fee Attribution Summary -->
+  <div class="panel col-7">
+    <div class="panel-title">Fee Attribution by Share Class</div>
+    <div id="fee-attribution-stats"></div>
+    <div id="fee-attribution-table"><div class="loading">Loading...</div></div>
+  </div>
+
+  <!-- ============ FAIRNESS: SAME-NAV COHORT ANALYSIS ============ -->
+  <div class="section-divider">
+    <span class="section-label">Economic Fairness (Same Entry NAV)</span>
+  </div>
+
+  <!-- True Cohort Fairness -->
+  <div class="panel col-7">
+    <div class="panel-title">
+      Cohort Fairness (Same NAV + Class)
+      <span id="cohort-count" style="font-size:10px;color:var(--text-dim)"></span>
+    </div>
+    <div class="tab-row" id="cohort-tabs"></div>
+    <div id="cohort-table" class="scroll-panel"><div class="loading">Loading...</div></div>
+  </div>
+
+  <!-- HWM Audit -->
+  <div class="panel col-5">
+    <div class="panel-title">
+      Investor HWM Tracking
+      <span id="hwm-count" style="font-size:10px;color:var(--text-dim)"></span>
+    </div>
+    <div id="hwm-stats"></div>
+    <div id="hwm-table" class="scroll-panel"><div class="loading">Loading...</div></div>
+  </div>
+
+  <!-- Cohort Drill-Down (appears when clicking a row) -->
+  <div class="panel col-12" id="drill-panel" style="display:none">
+    <div class="panel-title">
+      Cohort Drill-Down
+      <button class="tab-btn" onclick="closeDrill()">Close</button>
+    </div>
+    <div id="drill-table"><div class="loading">Select a cohort...</div></div>
+  </div>
+
+  <!-- Dispersion Chart + Fee Drag Chart -->
+  <div class="panel col-6">
+    <div class="panel-title">Return Dispersion by Cohort</div>
+    <div class="chart-container"><canvas id="dispersion-chart"></canvas></div>
+  </div>
+
+  <div class="panel col-6">
+    <div class="panel-title">Fee Drag Distribution</div>
+    <div class="chart-container"><canvas id="fee-drag-chart"></canvas></div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8050/api';
+let activeFund = 'GatSlinger Alpha';
+let navChart = null;
+let feeChart = null;
+let dispersionChart = null;
+let feeDragChart = null;
+let prevPnl = {};
+let sseSource = null;
+let cohortFilter = 'all'; // all, flagged, multi
+
+// ========== UTILITIES ==========
+function fmt(n, decimals = 2) {
+  if (n == null) return '\u2014';
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+function fmtPct(n) { return n == null ? '\u2014' : fmt(n, 2) + '%'; }
+function fmtUsd(n) { return n == null ? '\u2014' : '$' + fmt(n); }
+function cls(n) { return n > 0 ? 'pos' : n < 0 ? 'neg' : ''; }
+function sign(n) { return n > 0 ? '+' : ''; }
+
+function pillClass(status) {
+  if (!status) return 'pill-na';
+  const s = status.toUpperCase();
+  if (s === 'FAIR') return 'pill-fair';
+  if (s === 'REVIEW') return 'pill-review';
+  if (s === 'INVESTIGATE') return 'pill-investigate';
+  if (s === 'POSITION_CHANGE') return 'pill-position';
+  return 'pill-na';
+}
+
+async function fetchJson(path) {
+  try {
+    const r = await fetch(`${API}${path}`);
+    return await r.json();
+  } catch (e) {
+    console.error('Fetch error:', path, e);
+    return null;
+  }
+}
+
+// ========== HEADER ==========
+async function renderHeader() {
+  const data = await fetchJson('/fund-overview');
+  if (!data) return;
+
+  const nav = document.getElementById('fund-nav');
+  nav.innerHTML = data.map(f =>
+    `<button class="fund-btn ${f.fund_name === activeFund ? 'active' : ''}"
+      onclick="switchFund('${f.fund_name}')">${f.fund_name.replace('GatSlinger ', '')}</button>`
+  ).join('');
+
+  const fund = data.find(f => f.fund_name === activeFund) || data[0];
+  document.getElementById('header-stats').innerHTML = `
+    <div class="header-stat">
+      <div class="label">NAV / Unit</div>
+      <div class="value">${fmtUsd(fund.nav_per_unit)}</div>
+    </div>
+    <div class="header-stat">
+      <div class="label">Daily Chg</div>
+      <div class="value ${cls(fund.daily_change)}">${sign(fund.daily_change)}${fmtPct(fund.daily_change_pct)}</div>
+    </div>
+    <div class="header-stat">
+      <div class="label">AUM</div>
+      <div class="value">${fmtUsd(fund.aum)}</div>
+    </div>
+    <div class="header-stat">
+      <div class="label">Investors</div>
+      <div class="value">${fund.num_investors}</div>
+    </div>
+  `;
+}
+
+// ========== NAV BRIDGE WATERFALL ==========
+async function renderBridge() {
+  const data = await fetchJson(`/nav-bridge/${encodeURIComponent(activeFund)}`);
+  const el = document.getElementById('nav-bridge');
+  if (!data || !data.length) { el.innerHTML = '<div class="loading">No data</div>'; return; }
+
+  const latest = data[0];
+  const components = [
+    { label: 'Starting NAV', value: latest.starting_nav, type: 'base' },
+    { label: 'Trading P&L', value: latest.trading_pnl, type: 'delta' },
+    { label: 'Subscriptions', value: latest.subscriptions, type: 'delta' },
+    { label: 'Redemptions', value: latest.redemptions, type: 'delta' },
+    { label: 'Fees', value: latest.fees, type: 'delta' },
+    { label: 'Distributions', value: latest.distributions, type: 'delta' },
+    { label: 'Adjustments', value: latest.adjustments, type: 'delta' },
+    { label: 'Ending NAV', value: latest.ending_nav, type: 'total' },
+  ];
+
+  const maxVal = Math.max(...components.map(c => Math.abs(c.value || 0)));
+  el.innerHTML = components.map(c => {
+    const val = c.value || 0;
+    const color = c.type === 'base' ? 'var(--blue)' : c.type === 'total' ? 'var(--accent)' : val >= 0 ? 'var(--green)' : 'var(--red)';
+    const width = c.type === 'base' || c.type === 'total' ? 80 : Math.max(2, (Math.abs(val) / maxVal) * 80);
+    return `<div class="waterfall-row">
+      <span class="waterfall-label">${c.label}</span>
+      <div class="waterfall-bar-container">
+        <div class="waterfall-bar" style="width:${width}%;background:${color};opacity:0.7"></div>
+      </div>
+      <span class="waterfall-value ${cls(val)}">${fmtUsd(val)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ========== NAV HISTORY CHART ==========
+async function renderNavChart() {
+  const data = await fetchJson(`/nav-history/${encodeURIComponent(activeFund)}?days=90`);
+  if (!data) return;
+
+  const sorted = data.reverse();
+  const labels = sorted.map(d => d.date);
+  const values = sorted.map(d => d.nav_per_unit);
+
+  const ctx = document.getElementById('nav-chart').getContext('2d');
+  if (navChart) navChart.destroy();
+
+  navChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        borderColor: '#00ff88',
+        backgroundColor: 'rgba(0,255,136,0.05)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3,
+        pointBackgroundColor: '#00ff88',
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 8 },
+          grid: { color: 'rgba(30,41,59,0.5)' },
+        },
+        y: {
+          ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } },
+          grid: { color: 'rgba(30,41,59,0.5)' },
+        }
+      }
+    }
+  });
+}
+
+// ========== P&L TABLE (IBKR-style) ==========
+function renderPnLTable(data) {
+  const el = document.getElementById('pnl-table');
+  if (!data || !data.positions || !data.positions.length) {
+    el.innerHTML = '<div class="loading">No positions</div>';
+    return;
+  }
+
+  const pos = data.positions;
+  const sum = data.summary;
+
+  let html = `<table>
+    <tr>
+      <th>Symbol</th>
+      <th class="num">Qty</th>
+      <th class="num">Avg Cost</th>
+      <th class="num">Last</th>
+      <th class="num">Chg</th>
+      <th class="num">Chg%</th>
+      <th class="num">Daily P&L</th>
+      <th class="num">Unrealized</th>
+      <th class="num">Mkt Value</th>
+    </tr>`;
+
+  pos.forEach(p => {
+    const prevDaily = prevPnl[p.symbol];
+    const flashClass = prevDaily != null && p.daily_pnl !== prevDaily
+      ? (p.daily_pnl > prevDaily ? 'flash-pos' : 'flash-neg') : '';
+
+    html += `<tr class="${flashClass}">
+      <td><strong>${p.symbol}</strong></td>
+      <td class="num">${fmt(p.net_qty, 0)}</td>
+      <td class="num">${fmtUsd(p.avg_cost)}</td>
+      <td class="num">${fmtUsd(p.last_price)}</td>
+      <td class="num ${cls(p.price_change)}">${sign(p.price_change)}${fmt(p.price_change)}</td>
+      <td class="num ${cls(p.change_pct)}">${sign(p.change_pct)}${fmtPct(p.change_pct)}</td>
+      <td class="num ${cls(p.daily_pnl)}">${sign(p.daily_pnl)}${fmtUsd(p.daily_pnl)}</td>
+      <td class="num ${cls(p.unrealized_pnl)}">${sign(p.unrealized_pnl)}${fmtUsd(p.unrealized_pnl)}</td>
+      <td class="num">${fmtUsd(p.market_value)}</td>
+    </tr>`;
+    prevPnl[p.symbol] = p.daily_pnl;
+  });
+
+  html += `<tr class="total-row">
+    <td colspan="6"><strong>TOTAL</strong></td>
+    <td class="num ${cls(sum.total_daily_pnl)}"><strong>${sign(sum.total_daily_pnl)}${fmtUsd(sum.total_daily_pnl)}</strong></td>
+    <td class="num ${cls(sum.total_unrealized_pnl)}"><strong>${sign(sum.total_unrealized_pnl)}${fmtUsd(sum.total_unrealized_pnl)}</strong></td>
+    <td class="num"><strong>${fmtUsd(sum.total_market_value)}</strong></td>
+  </tr></table>`;
+  el.innerHTML = html;
+}
+
+async function fetchPnL() {
+  const data = await fetchJson(`/pnl/${encodeURIComponent(activeFund)}`);
+  if (data) renderPnLTable(data);
+}
+
+function connectSSE() {
+  if (sseSource) sseSource.close();
+  const statusEl = document.getElementById('pnl-status');
+
+  sseSource = new EventSource(`${API}/pnl-stream/${encodeURIComponent(activeFund)}`);
+  sseSource.onopen = () => {
+    statusEl.className = 'status-connected';
+    statusEl.innerHTML = '&#9679; live';
+  };
+  sseSource.onmessage = (e) => {
+    try {
+      const positions = JSON.parse(e.data);
+      const summary = {
+        total_daily_pnl: positions.reduce((s, p) => s + (p.daily_pnl || 0), 0),
+        total_unrealized_pnl: positions.reduce((s, p) => s + (p.unrealized_pnl || 0), 0),
+        total_market_value: positions.reduce((s, p) => s + (p.market_value || 0), 0),
+      };
+      renderPnLTable({ summary, positions });
+    } catch (err) { console.error('SSE parse error:', err); }
+  };
+  sseSource.onerror = () => {
+    statusEl.className = 'status-disconnected';
+    statusEl.innerHTML = '&#9679; disconnected';
+  };
+}
+
+// ========== POSITIONS ==========
+async function renderPositions() {
+  const data = await fetchJson(`/positions/${encodeURIComponent(activeFund)}`);
+  const el = document.getElementById('positions-table');
+  if (!data || !data.length) { el.innerHTML = '<div class="loading">No positions</div>'; return; }
+
+  el.innerHTML = `<table>
+    <tr><th>Symbol</th><th class="num">Qty</th><th class="num">Mkt Value</th><th class="num">Weight</th><th class="num">P&L</th></tr>
+    ${data.map(p => `<tr>
+      <td><strong>${p.symbol}</strong></td>
+      <td class="num">${fmt(p.net_qty, 0)}</td>
+      <td class="num">${fmtUsd(p.market_value)}</td>
+      <td class="num">${fmtPct(p.weight_pct)}</td>
+      <td class="num ${cls(p.unrealized_pnl)}">${sign(p.unrealized_pnl)}${fmtUsd(p.unrealized_pnl)}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+// ========== FEES ==========
+async function renderFees() {
+  const data = await fetchJson(`/fees/${encodeURIComponent(activeFund)}`);
+  const el = document.getElementById('fee-panel');
+  if (!data || !data.length) { el.innerHTML = '<div class="loading">No fee data</div>'; return; }
+
+  const latest = data[0];
+  const items = [
+    { label: 'Management', value: latest.mgmt_fee, color: '#3b82f6' },
+    { label: 'Performance', value: latest.perf_fee, color: '#8b5cf6' },
+    { label: 'Admin', value: latest.admin_fee, color: '#f59e0b' },
+    { label: 'Custody', value: latest.custody_fee, color: '#ef4444' },
+    { label: 'Other', value: latest.other_fee, color: '#6b7280' },
+  ].filter(i => i.value !== 0);
+
+  el.innerHTML = `<div class="fee-grid">
+    <div style="position:relative;height:180px"><canvas id="fee-chart"></canvas></div>
+    <ul class="fee-list">
+      ${items.map(i => `<li>
+        <span><span class="fee-dot" style="background:${i.color}"></span>${i.label}</span>
+        <span class="num">${fmtUsd(Math.abs(i.value))}</span>
+      </li>`).join('')}
+      <li style="font-weight:700;border-top:2px solid var(--border);padding-top:6px">
+        <span>Total</span>
+        <span class="num">${fmtUsd(Math.abs(latest.total_fees))}</span>
+      </li>
+    </ul>
+  </div>`;
+
+  const ctx = document.getElementById('fee-chart').getContext('2d');
+  if (feeChart) feeChart.destroy();
+  feeChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: items.map(i => i.label),
+      datasets: [{ data: items.map(i => Math.abs(i.value)), backgroundColor: items.map(i => i.color), borderWidth: 0 }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '65%',
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+// ========== INVESTORS ==========
+async function renderInvestors() {
+  const data = await fetchJson(`/investors/${encodeURIComponent(activeFund)}`);
+  const el = document.getElementById('investor-table');
+  if (!data || !data.length) { el.innerHTML = '<div class="loading">No investors</div>'; return; }
+
+  const total = data.reduce((s, d) => s + d.allocation_value, 0);
+  el.innerHTML = `<table>
+    <tr><th>Investor</th><th>Series</th><th class="num">Units</th><th class="num">Value</th><th class="num">% Fund</th><th class="num">HWM</th></tr>
+    ${data.map(d => `<tr>
+      <td><strong>${d.investor_id}</strong></td>
+      <td style="color:var(--text-dim)">${d.series_id}</td>
+      <td class="num">${fmt(d.units, 2)}</td>
+      <td class="num">${fmtUsd(d.allocation_value)}</td>
+      <td class="num">${fmtPct((d.allocation_value / total) * 100)}</td>
+      <td class="num">${fmt(d.high_water_mark)}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+// ========== ALERTS ==========
+async function renderAlerts() {
+  const data = await fetchJson('/alerts');
+  const el = document.getElementById('alert-panel');
+  const badge = document.getElementById('alert-badge');
+
+  if (!data || !data.length) {
+    el.innerHTML = '<div class="loading" style="color:var(--green)">No active alerts</div>';
+    badge.style.display = 'none';
+    return;
+  }
+
+  badge.style.display = 'inline';
+  badge.textContent = data.length;
+
+  el.innerHTML = data.map(a => `
+    <div class="alert-item">
+      <div class="alert-dot ${a.severity}"></div>
+      <div>
+        <div>${a.message}</div>
+        <div style="color:var(--text-dim);font-size:10px">${a.fund_name || 'All funds'} \u2014 ${a.alert_date}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ========== PRICING DISPERSION (OPERATIONAL) ==========
+async function renderPricingDispersion() {
+  const data = await fetchJson(`/pricing-dispersion/${encodeURIComponent(activeFund)}`);
+  const statsEl = document.getElementById('pricing-stats');
+  const tableEl = document.getElementById('pricing-table');
+  const countEl = document.getElementById('pricing-count');
+
+  if (!data || !data.length) {
+    statsEl.innerHTML = '';
+    tableEl.innerHTML = '<div class="loading" style="color:var(--green)">No multi-investor entry dates</div>';
+    countEl.textContent = '';
+    return;
+  }
+
+  const alerts = data.filter(d => d.pricing_status === 'PRICING_ALERT').length;
+  const reviews = data.filter(d => d.pricing_status === 'REVIEW').length;
+  const clean = data.filter(d => d.pricing_status === 'CLEAN').length;
+  countEl.textContent = `${data.length} dates`;
+
+  statsEl.innerHTML = `<div class="stat-cards">
+    <div class="stat-card">
+      <div class="sc-label">Pricing Alerts</div>
+      <div class="sc-value ${alerts > 0 ? 'neg' : 'pos'}">${alerts}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">Review</div>
+      <div class="sc-value" style="color:var(--yellow)">${reviews}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">Clean</div>
+      <div class="sc-value pos">${clean}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">Max Dispersion</div>
+      <div class="sc-value ${alerts > 0 ? 'neg' : ''}">${fmtPct(Math.max(...data.map(d => d.dispersion_pct)))}</div>
+    </div>
+  </div>`;
+
+  function pricingPill(status) {
+    if (status === 'PRICING_ALERT') return 'pill-investigate';
+    if (status === 'REVIEW') return 'pill-review';
+    if (status === 'MINOR') return 'pill-review';
+    return 'pill-fair';
+  }
+
+  tableEl.innerHTML = `<table>
+    <tr>
+      <th>Entry Date</th>
+      <th>Class</th>
+      <th class="num">Investors</th>
+      <th class="num">Min NAV</th>
+      <th class="num">Max NAV</th>
+      <th class="num">Dispersion</th>
+      <th>Status</th>
+    </tr>
+    ${data.map(d => `<tr>
+      <td>${d.entry_date}</td>
+      <td>${d.class}</td>
+      <td class="num">${d.investors}</td>
+      <td class="num">${fmt(d.min_nav, 4)}</td>
+      <td class="num">${fmt(d.max_nav, 4)}</td>
+      <td class="num ${d.dispersion_pct > 1 ? 'neg' : ''}">${fmtPct(d.dispersion_pct)}</td>
+      <td><span class="pill ${pricingPill(d.pricing_status)}">${d.pricing_status}</span></td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+// ========== FEE ATTRIBUTION ==========
+async function renderFeeAttribution() {
+  const data = await fetchJson(`/investor-fairness/${encodeURIComponent(activeFund)}`);
+  const statsEl = document.getElementById('fee-attribution-stats');
+  const tableEl = document.getElementById('fee-attribution-table');
+
+  if (!data || !data.length) {
+    statsEl.innerHTML = '';
+    tableEl.innerHTML = '<div class="loading">No fee attribution data</div>';
+    return;
+  }
+
+  const totalInvestors = data.reduce((s, d) => s + d.investors, 0);
+  const avgDrag = data.reduce((s, d) => s + d.avg_fee_drag * d.investors, 0) / totalInvestors;
+  const maxSpread = Math.max(...data.map(d => d.fee_drag_spread));
+  const classes = data.length;
+
+  statsEl.innerHTML = `<div class="stat-cards">
+    <div class="stat-card">
+      <div class="sc-label">Share Classes</div>
+      <div class="sc-value">${classes}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">Total Investors</div>
+      <div class="sc-value">${totalInvestors}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">Avg Fee Drag</div>
+      <div class="sc-value" style="color:var(--yellow)">${fmtPct(avgDrag)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">Max Drag Spread</div>
+      <div class="sc-value ${maxSpread > 1 ? 'neg' : ''}">${fmtPct(maxSpread)}</div>
+    </div>
+  </div>`;
+
+  tableEl.innerHTML = `<table>
+    <tr>
+      <th>Class</th>
+      <th class="num">Investors</th>
+      <th class="num">Avg Gross</th>
+      <th class="num">Avg Net</th>
+      <th class="num">Avg Fee Drag</th>
+      <th class="num">Min Drag</th>
+      <th class="num">Max Drag</th>
+      <th class="num">Spread</th>
+    </tr>
+    ${data.map(d => {
+      const spreadCls = d.fee_drag_spread > 1.0 ? 'neg' : d.fee_drag_spread > 0.5 ? '' : 'pos';
+      return `<tr>
+        <td><strong>${d.share_class}</strong></td>
+        <td class="num">${d.investors}</td>
+        <td class="num ${cls(d.avg_gross_return)}">${sign(d.avg_gross_return)}${fmtPct(d.avg_gross_return)}</td>
+        <td class="num ${cls(d.avg_net_return)}">${sign(d.avg_net_return)}${fmtPct(d.avg_net_return)}</td>
+        <td class="num" style="color:var(--yellow)">${fmtPct(d.avg_fee_drag)}</td>
+        <td class="num">${fmtPct(d.min_fee_drag)}</td>
+        <td class="num">${fmtPct(d.max_fee_drag)}</td>
+        <td class="num ${spreadCls}">${fmtPct(d.fee_drag_spread)}</td>
+      </tr>`;
+    }).join('')}
+  </table>`;
+
+  renderFeeDragChart(data);
+}
+
+// ========== COHORT FAIRNESS (TRUE: same NAV + class) ==========
+let allCohortData = [];
+
+async function renderCohortFairness() {
+  const data = await fetchJson(`/cohort-fairness/${encodeURIComponent(activeFund)}`);
+  const tabsEl = document.getElementById('cohort-tabs');
+  const tableEl = document.getElementById('cohort-table');
+  const countEl = document.getElementById('cohort-count');
+
+  if (!data || !data.length) {
+    tabsEl.innerHTML = '';
+    tableEl.innerHTML = '<div class="loading">No cohort data</div>';
+    countEl.textContent = '';
+    return;
+  }
+
+  allCohortData = data;
+
+  const flagged = data.filter(d => d.fairness_status === 'INVESTIGATE' || d.fairness_status === 'REVIEW');
+  const multi = data.filter(d => d.cohort_size > 1);
+
+  tabsEl.innerHTML = `
+    <button class="tab-btn ${cohortFilter === 'all' ? 'active' : ''}" onclick="setCohortFilter('all')">All (${data.length})</button>
+    <button class="tab-btn ${cohortFilter === 'flagged' ? 'active' : ''}" onclick="setCohortFilter('flagged')">Flagged (${flagged.length})</button>
+    <button class="tab-btn ${cohortFilter === 'multi' ? 'active' : ''}" onclick="setCohortFilter('multi')">Multi-Investor (${multi.length})</button>
+  `;
+
+  renderCohortTable();
+  renderDispersionChart(data);
+}
+
+function setCohortFilter(f) {
+  cohortFilter = f;
+  document.querySelectorAll('#cohort-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`#cohort-tabs .tab-btn:nth-child(${f === 'all' ? 1 : f === 'flagged' ? 2 : 3})`).classList.add('active');
+  renderCohortTable();
+}
+
+function renderCohortTable() {
+  const tableEl = document.getElementById('cohort-table');
+  const countEl = document.getElementById('cohort-count');
+
+  let filtered = allCohortData;
+  if (cohortFilter === 'flagged') {
+    filtered = allCohortData.filter(d => d.fairness_status === 'INVESTIGATE' || d.fairness_status === 'REVIEW');
+  } else if (cohortFilter === 'multi') {
+    filtered = allCohortData.filter(d => d.cohort_size > 1);
+  }
+
+  countEl.textContent = `${filtered.length} cohorts`;
+
+  if (!filtered.length) {
+    tableEl.innerHTML = '<div class="loading" style="color:var(--green)">No flagged cohorts</div>';
+    return;
+  }
+
+  const maxDisp = Math.max(...allCohortData.map(x => x.return_dispersion || 0));
+
+  tableEl.innerHTML = `<table>
+    <tr>
+      <th>Entry Date</th>
+      <th>Class</th>
+      <th class="num">Entry NAV</th>
+      <th class="num">Size</th>
+      <th class="num">Avg Net</th>
+      <th class="num">Dispersion</th>
+      <th class="num">Fee Spread</th>
+      <th class="num">Pos Chg</th>
+      <th>Status</th>
+    </tr>
+    ${filtered.map(d => {
+      const dispPct = maxDisp > 0 ? ((d.return_dispersion || 0) / maxDisp) * 100 : 0;
+      const statusColors = {
+        'INVESTIGATE': 'var(--red)', 'REVIEW': 'var(--yellow)',
+        'POSITION_CHANGE': 'var(--blue)', 'FAIR': 'var(--green)'
+      };
+      const dispColor = statusColors[d.fairness_status] || 'var(--green)';
+      const clickable = d.cohort_size > 1 ? `style="cursor:pointer" onclick="drillCohort('${d.entry_date}', ${d.entry_nav})"` : '';
+      const posChg = d.max_position_change_pct || 0;
+      return `<tr ${clickable}>
+        <td>${d.entry_date || '\u2014'}</td>
+        <td>${d.share_class}</td>
+        <td class="num">${fmt(d.entry_nav, 4)}</td>
+        <td class="num">${d.cohort_size}${d.stable_investors != null ? ' <span style="color:var(--text-dim);font-size:10px">(' + d.stable_investors + ' stable)</span>' : ''}</td>
+        <td class="num ${cls(d.avg_net)}">${sign(d.avg_net)}${fmtPct(d.avg_net)}</td>
+        <td class="num">
+          <div class="disp-bar-bg"><div class="disp-bar-fill" style="width:${dispPct}%;background:${dispColor}"></div></div>
+          ${fmtPct(d.return_dispersion)}
+        </td>
+        <td class="num ${d.fee_drag_spread > 0.5 ? 'neg' : ''}">${fmtPct(d.fee_drag_spread)}</td>
+        <td class="num ${posChg > 10 ? 'neg' : ''}">${fmtPct(posChg)}</td>
+        <td><span class="pill ${pillClass(d.fairness_status)}">${d.fairness_status}</span></td>
+      </tr>`;
+    }).join('')}
+  </table>
+  <div style="margin-top:10px;font-size:10px;color:var(--text-dim);line-height:1.7">
+    <strong>Dispersion explained by:</strong>
+    <span class="pill pill-investigate" style="margin-left:4px">INVESTIGATE</span> Fees (same position, different returns)
+    <span class="pill pill-review" style="margin-left:8px">REVIEW</span> Borderline
+    <span class="pill pill-position" style="margin-left:8px">POSITION_CHANGE</span> Position history (redemptions/flows)
+    <span class="pill pill-fair" style="margin-left:8px">FAIR</span> No dispersion
+  </div>`;
+}
+
+// ========== COHORT DRILL-DOWN ==========
+async function drillCohort(entryDate, entryNav) {
+  const panel = document.getElementById('drill-panel');
+  const tableEl = document.getElementById('drill-table');
+  panel.style.display = 'block';
+  tableEl.innerHTML = '<div class="loading">Loading investors...</div>';
+
+  const data = await fetchJson(
+    `/cohort-drill/${encodeURIComponent(activeFund)}?entry_date=${entryDate}&entry_nav=${entryNav}`
+  );
+
+  if (!data || !data.length) {
+    tableEl.innerHTML = '<div class="loading">No data</div>';
+    return;
+  }
+
+  tableEl.innerHTML = `
+    <div style="margin-bottom:8px;font-size:11px;color:var(--text-dim)">
+      Cohort: ${entryDate} | Entry NAV: ${fmt(entryNav, 4)} | ${data.length} investors | Same entry price \u2192 any dispersion = system issue
+    </div>
+    <table>
+    <tr>
+      <th>Investor</th>
+      <th>Class</th>
+      <th class="num">Units</th>
+      <th class="num">Entry NAV</th>
+      <th class="num">Exit NAV</th>
+      <th class="num">Gross Return</th>
+      <th class="num">Fee Drag</th>
+      <th class="num">Net Return</th>
+      <th class="num">Fees Paid</th>
+      <th class="num">Current Value</th>
+    </tr>
+    ${data.map(d => `<tr>
+      <td><strong>${d.investor_id}</strong></td>
+      <td>${d.class}</td>
+      <td class="num">${fmt(d.units, 2)}</td>
+      <td class="num">${fmt(d.entry_nav, 4)}</td>
+      <td class="num">${fmt(d.exit_nav, 4)}</td>
+      <td class="num ${cls(d.gross_return_pct)}">${sign(d.gross_return_pct)}${fmtPct(d.gross_return_pct)}</td>
+      <td class="num" style="color:var(--yellow)">${fmtPct(d.fee_drag_pct)}</td>
+      <td class="num ${cls(d.net_return_pct)}">${sign(d.net_return_pct)}${fmtPct(d.net_return_pct)}</td>
+      <td class="num">${fmtUsd(d.total_fees_paid)}</td>
+      <td class="num">${fmtUsd(d.current_value)}</td>
+    </tr>`).join('')}
+  </table>`;
+
+  panel.scrollIntoView({ behavior: 'smooth' });
+}
+
+function closeDrill() {
+  document.getElementById('drill-panel').style.display = 'none';
+}
+
+// ========== HWM AUDIT ==========
+async function renderHWMAudit() {
+  const data = await fetchJson(`/hwm-audit/${encodeURIComponent(activeFund)}`);
+  const statsEl = document.getElementById('hwm-stats');
+  const tableEl = document.getElementById('hwm-table');
+  const countEl = document.getElementById('hwm-count');
+
+  if (!data || !data.length) {
+    statsEl.innerHTML = '';
+    tableEl.innerHTML = '<div class="loading">No HWM data</div>';
+    countEl.textContent = '';
+    return;
+  }
+
+  const aboveHWM = data.filter(d => d.hwm_status === 'ABOVE_HWM').length;
+  const belowHWM = data.filter(d => d.hwm_status === 'BELOW_HWM').length;
+  const totalAccrued = data.reduce((s, d) => s + (d.accrued_perf_fee || 0), 0);
+  countEl.textContent = `${data.length} investors`;
+
+  statsEl.innerHTML = `<div class="stat-cards">
+    <div class="stat-card">
+      <div class="sc-label">Above HWM</div>
+      <div class="sc-value pos">${aboveHWM}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">Below HWM</div>
+      <div class="sc-value neg">${belowHWM}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">Accrued Perf Fees</div>
+      <div class="sc-value" style="color:var(--purple)">${fmtUsd(totalAccrued)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">Avg Excess / HWM</div>
+      <div class="sc-value">${fmtUsd(data.reduce((s,d) => s + (d.excess_over_hwm || 0), 0) / data.length)}</div>
+    </div>
+  </div>`;
+
+  // Show top 25 by accrued fee
+  const shown = data.slice(0, 25);
+  tableEl.innerHTML = `<table>
+    <tr>
+      <th>Investor</th>
+      <th>Class</th>
+      <th class="num">HWM</th>
+      <th class="num">Current NAV</th>
+      <th class="num">Excess</th>
+      <th class="num">Accrued Fee</th>
+      <th>Status</th>
+    </tr>
+    ${shown.map(d => `<tr>
+      <td><strong>${d.investor_id}</strong></td>
+      <td>${d.share_class}</td>
+      <td class="num">${fmt(d.high_water_mark)}</td>
+      <td class="num">${fmt(d.current_nav)}</td>
+      <td class="num ${cls(d.excess_over_hwm)}">${sign(d.excess_over_hwm)}${fmt(d.excess_over_hwm)}</td>
+      <td class="num" style="color:var(--purple)">${fmtUsd(d.accrued_perf_fee)}</td>
+      <td><span class="${d.hwm_status === 'ABOVE_HWM' ? 'hwm-above' : 'hwm-below'}">${d.hwm_status === 'ABOVE_HWM' ? 'ABOVE' : 'BELOW'}</span></td>
+    </tr>`).join('')}
+    ${data.length > 25 ? `<tr><td colspan="7" style="text-align:center;color:var(--text-dim);font-size:11px">... and ${data.length - 25} more investors</td></tr>` : ''}
+  </table>`;
+}
+
+// ========== DISPERSION CHART ==========
+function renderDispersionChart(data) {
+  const multiCohorts = data.filter(d => d.cohort_size > 1 && d.return_dispersion > 0);
+  if (!multiCohorts.length) return;
+
+  // Sort by dispersion descending, take top 15
+  const sorted = multiCohorts.sort((a, b) => b.return_dispersion - a.return_dispersion).slice(0, 15);
+
+  const ctx = document.getElementById('dispersion-chart').getContext('2d');
+  if (dispersionChart) dispersionChart.destroy();
+
+  const labels = sorted.map(d => (d.entry_date || d.cohort_entry || '?') + ' (' + d.share_class + ')');
+  const dispersions = sorted.map(d => d.return_dispersion);
+  const colors = sorted.map(d =>
+    d.fairness_status === 'INVESTIGATE' ? 'rgba(255,68,68,0.8)' :
+    d.fairness_status === 'REVIEW' ? 'rgba(251,191,36,0.8)' :
+    'rgba(0,255,136,0.8)'
+  );
+
+  dispersionChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data: dispersions,
+        backgroundColor: colors,
+        borderWidth: 0,
+        borderRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `Dispersion: ${ctx.parsed.x.toFixed(4)}%`
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Return Dispersion (%)', color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } },
+          ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } },
+          grid: { color: 'rgba(30,41,59,0.5)' },
+        },
+        y: {
+          ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 9 } },
+          grid: { display: false },
+        }
+      }
+    }
+  });
+}
+
+// ========== FEE DRAG CHART ==========
+function renderFeeDragChart(data) {
+  const ctx = document.getElementById('fee-drag-chart').getContext('2d');
+  if (feeDragChart) feeDragChart.destroy();
+
+  if (!data || !data.length) return;
+
+  const classColors = { A: '#3b82f6', B: '#8b5cf6', I: '#00ff88' };
+  const labels = data.map(d => `Class ${d.share_class}`);
+
+  feeDragChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Min Fee Drag',
+          data: data.map(d => d.min_fee_drag),
+          backgroundColor: data.map(d => classColors[d.share_class] || '#6b7280'),
+          borderWidth: 0,
+          borderRadius: 3,
+          barPercentage: 0.6,
+        },
+        {
+          label: 'Avg Fee Drag',
+          data: data.map(d => d.avg_fee_drag),
+          backgroundColor: data.map(d => {
+            const c = classColors[d.share_class] || '#6b7280';
+            return c.replace(')', ',0.6)').replace('rgb', 'rgba');
+          }),
+          borderWidth: 0,
+          borderRadius: 3,
+          barPercentage: 0.6,
+        },
+        {
+          label: 'Max Fee Drag',
+          data: data.map(d => d.max_fee_drag),
+          backgroundColor: data.map(() => 'rgba(255,68,68,0.5)'),
+          borderWidth: 0,
+          borderRadius: 3,
+          barPercentage: 0.6,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 }, boxWidth: 12 }
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)}%`
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } },
+          grid: { display: false },
+        },
+        y: {
+          title: { display: true, text: 'Fee Drag (%)', color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } },
+          ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } },
+          grid: { color: 'rgba(30,41,59,0.5)' },
+        }
+      }
+    }
+  });
+}
+
+// ========== FUND SWITCH ==========
+function switchFund(name) {
+  activeFund = name;
+  prevPnl = {};
+  cohortFilter = 'all';
+  refreshAll();
+}
+
+// ========== REFRESH ==========
+async function refreshAll() {
+  await renderHeader();
+  renderBridge();
+  renderNavChart();
+  fetchPnL();
+  renderPositions();
+  renderFees();
+  renderInvestors();
+  renderAlerts();
+  renderPricingDispersion();
+  renderFeeAttribution();
+  renderCohortFairness();
+  renderHWMAudit();
+  connectSSE();
+}
+
+// ========== INIT ==========
+document.addEventListener('DOMContentLoaded', () => {
+  refreshAll();
+  setInterval(renderHeader, 30000);
+  setInterval(renderAlerts, 30000);
+  setInterval(() => {
+    renderPositions();
+    renderFees();
+    renderInvestors();
+    renderPricingDispersion();
+    renderFeeAttribution();
+    renderCohortFairness();
+    renderHWMAudit();
+  }, 60000);
+});
+</script>
+</body>
+</html>

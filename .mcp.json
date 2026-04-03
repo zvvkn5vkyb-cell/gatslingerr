@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "financial-db": {
+      "command": "python3",
+      "args": [
+        "/Users/chadh./repo git/gatslingerr/mcp-db-server/mcp_server.py",
+        "--database-url",
+        "postgresql+asyncpg://chadh.@localhost:5432/financial_db"
+      ]
+    }
+  }
+}
