@@ -10,6 +10,7 @@ from datetime import datetime
 
 from db import get_db, q
 from risk import render_risk_and_pnl_module
+from strategy_manager import render_strategy_manager, get_active_strategies
 
 st.set_page_config(page_title="GatSlinger", layout="wide")
 
@@ -64,15 +65,25 @@ fund_names = [f["fund_name"] for f in funds]
 active_fund = st.sidebar.selectbox("Fund", fund_names) if fund_names else None
 
 st.sidebar.divider()
+page = st.sidebar.radio(
+    "Section",
+    ["Trading Dashboard", "Strategy Manager"],
+    label_visibility="collapsed",
+)
+
 if st.sidebar.button("Refresh"):
     st.cache_resource.clear()
     st.rerun()
 st.sidebar.caption(f"{datetime.now().strftime('%H:%M:%S')}")
 
 # ============================================================
-# MAIN — IBKR Live Data
+# MAIN — Route by page
 # ============================================================
 st.title("GatSlinger")
+
+if page == "Strategy Manager":
+    render_strategy_manager()
+    st.stop()
 
 ib = st.session_state.ib
 
@@ -124,6 +135,25 @@ if ib and ib.isConnected():
 
 else:
     st.info("Connect to IBKR via the sidebar.")
+
+# ── Strategies In Play ───────────────────────────────────────
+st.markdown("---")
+st.subheader("Strategies In Play")
+active_strategies = get_active_strategies()
+if active_strategies:
+    rows = []
+    for name, cfg in active_strategies.items():
+        rows.append({
+            "Strategy": name,
+            "Asset": cfg.get("asset", ""),
+            "Mode": cfg.get("mode", ""),
+            "Window": cfg.get("params", {}).get("window_minutes", ""),
+            "Risk %": cfg.get("params", {}).get("risk_per_trade_pct", ""),
+            "Max Trades": cfg.get("params", {}).get("max_daily_trades", ""),
+        })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+else:
+    st.info("No active strategies. Enable one in Strategy Manager.")
 
 # ============================================================
 # MAIN — Fund Accounting (PostgreSQL)

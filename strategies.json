@@ -1,0 +1,40 @@
+{
+  "ORB_ES": {
+    "enabled": true,
+    "status": "active",
+    "mode": "paper",
+    "asset": "ES",
+    "strategy_type": "ORB",
+    "params": {
+      "window_minutes": 15,
+      "breakout_buffer": 0.25,
+      "atr_filter": true,
+      "atr_min": 8.0,
+      "max_daily_trades": 2,
+      "risk_per_trade_pct": 0.5,
+      "stop_loss_atr": 1.0,
+      "take_profit_atr": 2.0,
+      "session_open": "09:30",
+      "session_close": "16:00"
+    }
+  },
+  "ORB_BTC": {
+    "enabled": false,
+    "status": "inactive",
+    "mode": "sim",
+    "asset": "BTC",
+    "strategy_type": "ORB",
+    "params": {
+      "window_minutes": 30,
+      "breakout_buffer": 15.0,
+      "atr_filter": true,
+      "atr_min": 150.0,
+      "max_daily_trades": 2,
+      "risk_per_trade_pct": 0.75,
+      "stop_loss_atr": 1.25,
+      "take_profit_atr": 2.5,
+      "session_open": "08:00",
+      "session_close": "20:00"
+    }
+  }
+}
