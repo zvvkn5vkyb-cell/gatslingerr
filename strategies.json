@@ -16,6 +16,7 @@
       "take_profit_atr": 2.0,
       "retest_tolerance": 1.0,
       "min_break_strength": 0.75,
+      "max_retest_bars": 10,
       "session_open": "09:30",
       "session_close": "16:00"
     }

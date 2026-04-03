@@ -272,7 +272,8 @@ else:
 
         # Only advance if trade is allowed or we're already tracking
         if trade_allowed or ts.state != "WAITING_BREAKOUT":
-            ts = update_retest_state(ts, signal_type, price, orb_high, orb_low, params)
+            ts = update_retest_state(ts, signal_type, price, orb_high, orb_low, params,
+                                       bar_count=len(rth))
             st.session_state[state_key] = ts
 
         # ── Row 4: Retest state display
@@ -284,7 +285,10 @@ else:
         }
         sc = state_colors.get(ts.state, "#94a3b8")
 
-        rs1, rs2, rs3, rs4 = st.columns(4)
+        bars_since = (len(rth) - ts.retest_start_index) if ts.retest_start_index is not None else 0
+        max_retest_bars = int(params.get("max_retest_bars", 10))
+
+        rs1, rs2, rs3, rs4, rs5 = st.columns(5)
         rs1.markdown(
             f'<div style="background:{sc}22;border:1px solid {sc};border-radius:6px;'
             f'padding:8px 12px;text-align:center;font-weight:600;color:{sc}">'
@@ -294,6 +298,7 @@ else:
         rs2.metric("Direction", ts.direction or "—")
         rs3.metric("Breakout Level", round(ts.breakout_level, 2) if ts.breakout_level else "—")
         rs4.metric("Entry Price", round(ts.entry_price, 2) if ts.entry_price else "—")
+        rs5.metric("Bars Since Breakout", f"{bars_since}/{max_retest_bars}" if ts.retest_start_index else "—")
 
         # ── Reason line
         reason = signal.get("reason", "")

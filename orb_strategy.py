@@ -51,6 +51,7 @@ class TradeState:
         self.entry_price = None
         self.retest_confirmed = False
         self.has_traded = False
+        self.retest_start_index = None
 
     def reset(self):
         self.state = "WAITING_BREAKOUT"
@@ -59,20 +60,35 @@ class TradeState:
         self.entry_price = None
         self.retest_confirmed = False
         self.has_traded = False
+        self.retest_start_index = None
 
 
-def update_retest_state(state, signal, price, orb_high, orb_low, params):
-    """Advance the retest state machine one tick. Returns the same
-    TradeState object (mutated in place) for convenience."""
+def update_retest_state(state, signal, price, orb_high, orb_low, params,
+                        bar_count=0):
+    """Advance the retest state machine one tick.
+
+    bar_count: current number of RTH bars (len(rth) from caller).
+    Used to enforce max_retest_bars timeout.
+    Returns the same TradeState object (mutated in place).
+    """
     buffer = float(params.get("breakout_buffer", 0.0))
     retest_tolerance = float(params.get("retest_tolerance", 1.0))
     min_break_strength = float(params.get("min_break_strength", 0.5))
+    max_retest_bars = int(params.get("max_retest_bars", 10))
+
+    # ── Timeout: applies to WAITING_RETEST and READY_TO_ENTER
+    if state.state in ("WAITING_RETEST", "READY_TO_ENTER") and state.retest_start_index is not None:
+        bars_since = bar_count - state.retest_start_index
+        if bars_since > max_retest_bars:
+            state.reset()
+            return state
 
     # ── LONG flow
     if state.state == "WAITING_BREAKOUT" and signal == "LONG":
         state.state = "WAITING_RETEST"
         state.breakout_level = orb_high
         state.direction = "LONG"
+        state.retest_start_index = bar_count
         return state
 
     if state.state == "WAITING_RETEST" and state.direction == "LONG":
@@ -99,6 +115,7 @@ def update_retest_state(state, signal, price, orb_high, orb_low, params):
         state.state = "WAITING_RETEST"
         state.breakout_level = orb_low
         state.direction = "SHORT"
+        state.retest_start_index = bar_count
         return state
 
     if state.state == "WAITING_RETEST" and state.direction == "SHORT":
