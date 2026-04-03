@@ -114,10 +114,11 @@ def render_strategy_manager():
         max_daily_trades  = st.number_input("Max Daily Trades", min_value=1,  value=int(p.get("max_daily_trades", 2)))
         risk_per_trade_pct= st.number_input("Risk per Trade %", min_value=0.0, value=float(p.get("risk_per_trade_pct", 0.5)))
     with c3:
-        stop_loss_atr     = st.number_input("Stop Loss ATR",   min_value=0.1, value=float(p.get("stop_loss_atr", 1.0)))
-        take_profit_atr   = st.number_input("Take Profit ATR", min_value=0.1, value=float(p.get("take_profit_atr", 2.0)))
-        session_open      = st.text_input(  "Session Open",                   value=p.get("session_open", "09:30"))
-        session_close     = st.text_input(  "Session Close",                  value=p.get("session_close", "16:00"))
+        stop_loss_atr     = st.number_input("Stop Loss ATR",      min_value=0.1, value=float(p.get("stop_loss_atr", 1.0)))
+        take_profit_atr   = st.number_input("Take Profit ATR",    min_value=0.1, value=float(p.get("take_profit_atr", 2.0)))
+        retest_tolerance  = st.number_input("Retest Tolerance",   min_value=0.1, value=float(p.get("retest_tolerance", 1.0)))
+        session_open      = st.text_input(  "Session Open",                      value=p.get("session_open", "09:30"))
+        session_close     = st.text_input(  "Session Close",                     value=p.get("session_close", "16:00"))
 
     # ── Action buttons
     cs, cp, cd = st.columns(3)
@@ -139,6 +140,7 @@ def render_strategy_manager():
                     "risk_per_trade_pct": risk_per_trade_pct,
                     "stop_loss_atr": stop_loss_atr,
                     "take_profit_atr": take_profit_atr,
+                    "retest_tolerance": retest_tolerance,
                     "session_open": session_open,
                     "session_close": session_close,
                 },

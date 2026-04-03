@@ -1,7 +1,8 @@
-"""Opening Range Breakout (ORB) signal generator.
+"""Opening Range Breakout (ORB) signal generator + retest state machine.
 
-Stateless — takes a DataFrame and params dict, returns a signal dict.
-No side effects, no I/O. Safe to call from any context.
+generate_orb_signal  — stateless, returns LONG/SHORT/FLAT per bar snapshot.
+TradeState           — tracks the retest flow across Streamlit reruns.
+update_retest_state  — advances the state machine one tick.
 
 Expected DataFrame columns: open, high, low, close
 Index: any (positional slice used)
@@ -34,3 +35,70 @@ def generate_orb_signal(data, params):
         return {"signal": "SHORT", "reason": "Close below ORB low - buffer", **base}
 
     return {"signal": "FLAT", "reason": "Inside opening range", **base}
+
+
+# ── Retest state machine ────────────────────────────────────
+
+class TradeState:
+    """Persisted in st.session_state per strategy. Tracks:
+    WAITING_BREAKOUT → WAITING_RETEST → READY_TO_ENTER → IN_POSITION
+    """
+
+    def __init__(self):
+        self.state = "WAITING_BREAKOUT"
+        self.breakout_level = None
+        self.direction = None
+        self.entry_price = None
+
+    def reset(self):
+        self.state = "WAITING_BREAKOUT"
+        self.breakout_level = None
+        self.direction = None
+        self.entry_price = None
+
+
+def update_retest_state(state, signal, price, orb_high, orb_low, params):
+    """Advance the retest state machine one tick. Returns the same
+    TradeState object (mutated in place) for convenience."""
+    buffer = float(params.get("breakout_buffer", 0.0))
+    retest_tolerance = float(params.get("retest_tolerance", 1.0))
+
+    # ── LONG flow
+    if state.state == "WAITING_BREAKOUT" and signal == "LONG":
+        state.state = "WAITING_RETEST"
+        state.breakout_level = orb_high
+        state.direction = "LONG"
+        return state
+
+    if state.state == "WAITING_RETEST" and state.direction == "LONG":
+        if abs(price - state.breakout_level) <= retest_tolerance:
+            state.state = "READY_TO_ENTER"
+        elif price < state.breakout_level - buffer:
+            state.reset()
+        return state
+
+    if state.state == "READY_TO_ENTER" and state.direction == "LONG":
+        state.entry_price = price
+        state.state = "IN_POSITION"
+        return state
+
+    # ── SHORT flow
+    if state.state == "WAITING_BREAKOUT" and signal == "SHORT":
+        state.state = "WAITING_RETEST"
+        state.breakout_level = orb_low
+        state.direction = "SHORT"
+        return state
+
+    if state.state == "WAITING_RETEST" and state.direction == "SHORT":
+        if abs(price - state.breakout_level) <= retest_tolerance:
+            state.state = "READY_TO_ENTER"
+        elif price > state.breakout_level + buffer:
+            state.reset()
+        return state
+
+    if state.state == "READY_TO_ENTER" and state.direction == "SHORT":
+        state.entry_price = price
+        state.state = "IN_POSITION"
+        return state
+
+    return state

@@ -11,7 +11,7 @@ from datetime import datetime
 from db import get_db, q
 from risk import render_risk_and_pnl_module
 from strategy_manager import render_strategy_manager, get_active_strategies
-from orb_strategy import generate_orb_signal
+from orb_strategy import generate_orb_signal, TradeState, update_retest_state
 
 st.set_page_config(page_title="GatSlinger", layout="wide")
 
@@ -262,6 +262,38 @@ else:
         colC.metric("Trend (10/30 MA)", trend)
 
         st.caption(f"RTH bars: {len(rth)} | Session: {session_open}–{session_close} ET | Date: {today}")
+
+        # ── Retest state machine (persists across Streamlit reruns)
+        state_key = f"trade_state_{name}"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = TradeState()
+
+        ts = st.session_state[state_key]
+
+        # Only advance if trade is allowed or we're already tracking
+        if trade_allowed or ts.state != "WAITING_BREAKOUT":
+            ts = update_retest_state(ts, signal_type, price, orb_high, orb_low, params)
+            st.session_state[state_key] = ts
+
+        # ── Row 4: Retest state display
+        state_colors = {
+            "WAITING_BREAKOUT": "#94a3b8",
+            "WAITING_RETEST":   "#f59e0b",
+            "READY_TO_ENTER":   "#22c55e",
+            "IN_POSITION":      "#3b82f6",
+        }
+        sc = state_colors.get(ts.state, "#94a3b8")
+
+        rs1, rs2, rs3, rs4 = st.columns(4)
+        rs1.markdown(
+            f'<div style="background:{sc}22;border:1px solid {sc};border-radius:6px;'
+            f'padding:8px 12px;text-align:center;font-weight:600;color:{sc}">'
+            f'{ts.state.replace("_", " ")}</div>',
+            unsafe_allow_html=True
+        )
+        rs2.metric("Direction", ts.direction or "—")
+        rs3.metric("Breakout Level", round(ts.breakout_level, 2) if ts.breakout_level else "—")
+        rs4.metric("Entry Price", round(ts.entry_price, 2) if ts.entry_price else "—")
 
         # ── Reason line
         reason = signal.get("reason", "")

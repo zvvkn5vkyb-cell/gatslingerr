@@ -14,6 +14,7 @@
       "risk_per_trade_pct": 0.5,
       "stop_loss_atr": 1.0,
       "take_profit_atr": 2.0,
+      "retest_tolerance": 1.0,
       "session_open": "09:30",
       "session_close": "16:00"
     }
