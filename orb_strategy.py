@@ -55,6 +55,8 @@ class TradeState:
         self.retest_confirmed = False
         self.has_traded = False
         self.retest_start_index = None
+        self.exit_reason = None
+        self.pnl = None
 
     def reset(self):
         self.state = "WAITING_BREAKOUT"
@@ -66,6 +68,8 @@ class TradeState:
         self.retest_confirmed = False
         self.has_traded = False
         self.retest_start_index = None
+        self.exit_reason = None
+        self.pnl = None
 
 
 def update_retest_state(state, signal, price, orb_high, orb_low, params,
@@ -80,6 +84,22 @@ def update_retest_state(state, signal, price, orb_high, orb_low, params,
     retest_tolerance = float(params.get("retest_tolerance", 1.0))
     min_break_strength = float(params.get("min_break_strength", 0.5))
     max_retest_bars = int(params.get("max_retest_bars", 10))
+
+    # ── Clear exit signal from previous tick
+    state.exit_reason = None
+    state.pnl = None
+
+    # ── Exit evaluation when IN_POSITION
+    if state.state == "IN_POSITION" and state.entry_price is not None:
+        exited, reason, pnl = check_exit(state, price)
+        if exited:
+            _reason = reason
+            _pnl = round(pnl, 4)
+            state.reset()
+            # Restore exit info AFTER reset so caller can read it
+            state.exit_reason = _reason
+            state.pnl = _pnl
+            return state
 
     # ── Timeout: applies to WAITING_RETEST and READY_TO_ENTER
     if state.state in ("WAITING_RETEST", "READY_TO_ENTER") and state.retest_start_index is not None:
