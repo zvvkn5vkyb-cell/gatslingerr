@@ -7,7 +7,7 @@ import psycopg2
 def get_db():
     try:
         conn = psycopg2.connect(
-            dbname="financial_db", user="chadh.", host="localhost", port=5432
+            dbname="financial_db", user="admin", password="admin", host="localhost", port=5432
         )
         conn.autocommit = True
         return conn

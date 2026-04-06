@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pathlib import Path
 
-DATABASE_URL = "postgresql://chadh.@localhost:5432/financial_db"
+DATABASE_URL = "postgresql://admin:admin@localhost:5432/financial_db"
 
 app = FastAPI(title="GatSlinger Dashboard API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
