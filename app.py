@@ -188,8 +188,9 @@ if page == "Cohort Analysis":
     # ── Explainability check
     st.markdown("#### Explainability")
     for _, row in inv_df.iterrows():
-        explained = abs(row["nav_return_pct"]) + abs(row["fee_drag_pct"]) + abs(row["timing_pct"]) + abs(row["restatement_pct"])
-        residual = abs(row["net_return_pct"]) - explained
+        # Signed sum — components should add up to net return
+        explained = row["nav_return_pct"] + row["fee_drag_pct"] + row["timing_pct"] + row["restatement_pct"]
+        residual = row["net_return_pct"] - explained
         status = "EXPLAINED" if abs(residual) < 0.01 else "RESIDUAL"
         color = "green" if status == "EXPLAINED" else "red"
         st.markdown(
@@ -219,6 +220,7 @@ if page == "Cohort Analysis":
         st.markdown("#### NAV Trajectory")
         nav_chart = bridge_df[["date", "ending_nav"]].copy()
         nav_chart["date"] = pd.to_datetime(nav_chart["date"])
+        nav_chart["ending_nav"] = nav_chart["ending_nav"].astype(float)
         st.line_chart(nav_chart.set_index("date")["ending_nav"])
 
     st.stop()
@@ -257,6 +259,10 @@ if ib and ib.isConnected():
     try:
         accounts = ib.managedAccounts()
         if accounts:
+            try:
+                ib.cancelPnL(accounts[0])
+            except Exception:
+                pass
             ib.reqPnL(accounts[0])
             ib.sleep(0.5)
             pnl_list = ib.pnl()

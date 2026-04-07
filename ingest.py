@@ -128,15 +128,27 @@ def sync_positions(ib, fund_name="GatSlinger Paper"):
 
 # ── Daily P&L ───────────────────────────────────────────────
 
-def sync_daily_pnl(ib, fund_name="GatSlinger Paper"):
-    """Pull today's P&L from IBKR and upsert into daily_pnl_summary."""
+def _fetch_pnl(ib):
+    """Request a fresh PnL snapshot from IBKR, cancelling any existing
+    subscription first to avoid the duplicate-key AssertionError."""
     accounts = ib.managedAccounts()
     if not accounts:
-        return False
-
-    ib.reqPnL(accounts[0])
+        return []
+    account = accounts[0]
+    try:
+        ib.cancelPnL(account)
+    except Exception:
+        pass
+    ib.reqPnL(account)
     ib.sleep(1)
-    pnl_list = ib.pnl()
+    return ib.pnl()
+
+
+def sync_daily_pnl(ib, fund_name="GatSlinger Paper", pnl_list=None):
+    """Pull today's P&L from IBKR and upsert into daily_pnl_summary.
+    Pass a pre-fetched pnl_list to avoid a duplicate reqPnL call."""
+    if pnl_list is None:
+        pnl_list = _fetch_pnl(ib)
 
     if not pnl_list:
         return False
@@ -164,7 +176,7 @@ def sync_daily_pnl(ib, fund_name="GatSlinger Paper"):
 
 # ── NAV Bridge Roll-Forward ─────────────────────────────────
 
-def roll_nav_bridge(ib, fund_name="GatSlinger Paper"):
+def roll_nav_bridge(ib, fund_name="GatSlinger Paper", pnl_list=None):
     """Create today's NAV bridge row from IBKR account data + DB state.
     Pulls starting_nav from yesterday's ending_nav, P&L from IBKR,
     subs/redemptions from today's investor_performance entries."""
@@ -184,15 +196,10 @@ def roll_nav_bridge(ib, fund_name="GatSlinger Paper"):
     """, (fund_name, today))
     starting_nav = float(prev[0]["ending_nav"]) if prev else 0
 
-    # Get today's P&L from IBKR
-    accounts = ib.managedAccounts()
+    # Get today's P&L from IBKR (pnl_list injected by sync_all to avoid double reqPnL)
     daily_pnl = 0
-    if accounts:
-        ib.reqPnL(accounts[0])
-        ib.sleep(1)
-        pnl_list = ib.pnl()
-        if pnl_list:
-            daily_pnl = safe_float(pnl_list[0].dailyPnL)
+    if pnl_list and pnl_list[0] is not None:
+        daily_pnl = safe_float(pnl_list[0].dailyPnL)
 
     # Get today's fees from fee_summary
     fee_rows = _query(
@@ -201,7 +208,12 @@ def roll_nav_bridge(ib, fund_name="GatSlinger Paper"):
     )
     fees = float(fee_rows[0]["total_fees"]) if fee_rows else 0
 
-    ending_nav = starting_nav + daily_pnl + fees  # fees are negative
+    # Use actual IBKR NetLiquidation as the authoritative ending NAV.
+    # This keeps the bridge grounded in reality rather than drifting from
+    # stale seed data. P&L and fees are still recorded for decomposition.
+    acct = get_account_summary_map(ib)
+    net_liq = safe_float(acct.get("NetLiquidation", 0)) or (starting_nav + daily_pnl + fees)
+    ending_nav = net_liq
 
     if existing:
         _exec("""
@@ -215,10 +227,6 @@ def roll_nav_bridge(ib, fund_name="GatSlinger Paper"):
                 (fund_name, date, starting_nav, pnl, subscriptions, redemptions, fees, distributions, ending_nav)
             VALUES (%s, %s, %s, %s, 0, 0, %s, 0, %s)
         """, (fund_name, today, starting_nav, daily_pnl, fees, ending_nav))
-
-    # Update NAV history
-    acct = get_account_summary_map(ib)
-    net_liq = safe_float(acct.get("NetLiquidation", ending_nav))
 
     _exec("""
         INSERT INTO monitoring.nav_history (fund_name, nav_per_unit, total_assets, total_liabilities, timestamp)
@@ -245,9 +253,11 @@ def roll_nav_bridge(ib, fund_name="GatSlinger Paper"):
 
 def sync_all(ib, fund_name="GatSlinger Paper"):
     """Run all ingestion steps. Returns a summary dict."""
+    # Fetch PnL once and share it across steps that need it.
+    pnl_list = _fetch_pnl(ib)
     results = {}
     results["trades_inserted"] = sync_trades(ib, fund_name)
     results["positions_inserted"] = sync_positions(ib, fund_name)
-    results["pnl_synced"] = sync_daily_pnl(ib, fund_name)
-    results["nav_rolled"] = roll_nav_bridge(ib, fund_name)
+    results["pnl_synced"] = sync_daily_pnl(ib, fund_name, pnl_list=pnl_list)
+    results["nav_rolled"] = roll_nav_bridge(ib, fund_name, pnl_list=pnl_list)
     return results
