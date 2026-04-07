@@ -6,3 +6,5 @@ fastapi>=0.111
 uvicorn>=0.29
 nest_asyncio>=1.6
 ib_insync>=0.9.86
+pytz>=2024.1
+python-dotenv>=1.0

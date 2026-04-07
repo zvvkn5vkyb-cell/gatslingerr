@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+from db import q
 import streamlit as st
 
 STRATEGY_FILE = Path(__file__).parent / "strategies.json"
@@ -118,9 +119,31 @@ def render_strategy_manager():
         take_profit_atr   = st.number_input("Take Profit ATR",    min_value=0.1, value=float(p.get("take_profit_atr", 2.0)))
         retest_tolerance  = st.number_input("Retest Tolerance",   min_value=0.1, value=float(p.get("retest_tolerance", 1.0)))
         min_break_strength= st.number_input("Min Break Strength", min_value=0.1, value=float(p.get("min_break_strength", 0.5)))
-        max_retest_bars   = st.number_input("Max Retest Bars",   min_value=1,   value=int(p.get("max_retest_bars", 10)))
-        session_open      = st.text_input(  "Session Open",                      value=p.get("session_open", "09:30"))
-        session_close     = st.text_input(  "Session Close",                     value=p.get("session_close", "16:00"))
+        max_retest_bars    = st.number_input("Max Retest Bars",      min_value=1,   value=int(p.get("max_retest_bars", 10)))
+        session_open       = st.text_input(  "Session Open",                       value=p.get("session_open", "09:30"))
+        session_close      = st.text_input(  "Session Close",                       value=p.get("session_close", "16:00"))
+        min_orb_range_pct  = st.number_input("Min ORB % of ATR",  min_value=0.0,  value=float(p.get("min_orb_range_pct_atr", 0.0)),
+                                              help="ORB range must be ≥ this % of ATR. 0 = disabled.")
+        min_atr_percentile = st.number_input("Min ATR Percentile", min_value=0.0, max_value=100.0,
+                                              value=float(p.get("min_atr_percentile", 0.0)),
+                                              help="ATR must be above this rolling percentile. 0 = disabled.")
+        volume_filter      = st.checkbox("Volume Filter", value=bool(p.get("volume_filter", False)),
+                                         help="Require above-average volume on breakout bar.")
+        volume_multiplier  = st.number_input("Volume Multiplier", min_value=0.1, value=float(p.get("volume_multiplier", 1.5)),
+                                              help="Breakout bar volume must be ≥ this × average volume.")
+        eod_exit_time      = st.text_input("EOD Exit Time (ET)", value=p.get("eod_exit_time", "15:45"),
+                                            help="Force-close all positions at this time. Format HH:MM.")
+        max_consec_losses  = st.number_input("Max Consecutive Losses", min_value=1, value=int(p.get("max_consecutive_losses", 2)),
+                                              help="Pause strategy for the day after this many losses in a row.")
+        no_entry_after     = st.text_input("No Entry After (ET)", value=p.get("no_entry_after", "11:30"),
+                                            help="Block new trade entries after this time. Format HH:MM. Leave blank to disable.")
+        prior_day_confluence = st.checkbox("Prior Day H/L Confluence", value=bool(p.get("prior_day_confluence", False)),
+                                            help="LONG requires close above prior day high. SHORT requires close below prior day low.")
+        partial_tp         = st.checkbox("Partial TP (50% at 1R)", value=bool(p.get("partial_tp", False)),
+                                          help="Take 50% profit at 1R and move stop to breakeven. Ride remaining 50% to full target.")
+        partial_tp_r       = st.number_input("Partial TP R multiple", min_value=0.5, max_value=2.0,
+                                              value=float(p.get("partial_tp_r", 1.0)),
+                                              help="Take partial profit at this R multiple (1.0 = 1R).")
 
     # ── Action buttons
     cs, cp, cd = st.columns(3)
@@ -147,6 +170,16 @@ def render_strategy_manager():
                     "max_retest_bars": max_retest_bars,
                     "session_open": session_open,
                     "session_close": session_close,
+                    "min_orb_range_pct_atr": min_orb_range_pct,
+                    "min_atr_percentile": min_atr_percentile,
+                    "volume_filter": volume_filter,
+                    "volume_multiplier": volume_multiplier,
+                    "eod_exit_time": eod_exit_time,
+                    "max_consecutive_losses": max_consec_losses,
+                    "no_entry_after": no_entry_after,
+                    "prior_day_confluence": prior_day_confluence,
+                    "partial_tp": partial_tp,
+                    "partial_tp_r": partial_tp_r,
                 },
             }
             save_strategies(strategies)
@@ -186,3 +219,40 @@ def render_strategy_manager():
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     else:
         st.info("No active strategies.")
+
+    # ── No-Trade Day Log
+    st.markdown("---")
+    st.subheader("No-Trade Day Log")
+    st.caption("Days where the strategy was blocked. Tracks what would have happened.")
+
+    no_trade = q("""
+        SELECT date, strategy, atr_value, orb_range,
+               orb_range_pct_atr AS "orb_%_atr",
+               atr_percentile AS "atr_pctile",
+               skip_reason, would_have_signal,
+               session_high, session_low, session_close
+        FROM monitoring.no_trade_log
+        ORDER BY date DESC
+        LIMIT 30
+    """)
+
+    if no_trade:
+        df = pd.DataFrame(no_trade)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+        # Summary stats
+        total = len(df)
+        atr_blocked  = len(df[df["skip_reason"].str.contains("volatility", na=False)])
+        orb_blocked  = len(df[df["skip_reason"].str.contains("tight", na=False)])
+        regime_blocked = len(df[df["skip_reason"].str.contains("regime", na=False)])
+        would_long   = len(df[df["would_have_signal"] == "LONG"])
+        would_short  = len(df[df["would_have_signal"] == "SHORT"])
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Total Skipped", total)
+        c2.metric("ATR Filter", atr_blocked)
+        c3.metric("ORB Range Filter", orb_blocked)
+        c4.metric("Vol Regime Filter", regime_blocked)
+        c5.metric("Would've Been Long/Short", f"{would_long}/{would_short}")
+    else:
+        st.info("No skipped days recorded yet. Will populate automatically during market hours.")

@@ -8,9 +8,9 @@
     "params": {
       "window_minutes": 15,
       "breakout_buffer": 0.25,
-      "atr_filter": true,
-      "atr_min": 8.0,
-      "max_daily_trades": 2,
+      "atr_filter": false,
+      "atr_min": 5.0,
+      "max_daily_trades": 6,
       "risk_per_trade_pct": 0.5,
       "stop_loss_atr": 1.0,
       "take_profit_atr": 2.0,
@@ -18,7 +18,17 @@
       "min_break_strength": 0.75,
       "max_retest_bars": 10,
       "session_open": "09:30",
-      "session_close": "16:00"
+      "session_close": "16:00",
+      "min_orb_range_pct_atr": 0.0,
+      "min_atr_percentile": 0.0,
+      "volume_filter": false,
+      "volume_multiplier": 1.5,
+      "eod_exit_time": "15:45",
+      "max_consecutive_losses": 2,
+      "prior_day_confluence": false,
+      "no_entry_after": "11:30",
+      "partial_tp": false,
+      "partial_tp_r": 1.0
     }
   },
   "ORB_BTC": {

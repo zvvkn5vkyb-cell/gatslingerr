@@ -19,7 +19,7 @@ except RuntimeError:
 import nest_asyncio
 nest_asyncio.apply()
 
-from ib_insync import IB, Future, util
+from ib_insync import IB, Future, ContFuture, util
 import math
 import pandas as pd
 
@@ -112,11 +112,22 @@ def get_market_price_from_ticker(ticker, fallback=0.0):
 def get_ibkr_bars(ib, symbol="ES", exchange="CME", currency="USD",
                   duration="1 D", bar_size="1 min"):
     """Fetch historical bars for a futures contract. Returns a DataFrame
-    with datetime index and OHLCV columns, or None on failure."""
-    contract = Future(symbol, exchange=exchange, currency=currency)
+    with datetime index and OHLCV columns, or None on failure.
+
+    Uses ContFuture (continuous front-month) for historical data so
+    IBKR can resolve the contract without a specific expiry date.
+    Falls back to Future with explicit front-month if ContFuture fails.
+    """
+    # Try continuous front-month first
+    contract = ContFuture(symbol, exchange=exchange, currency=currency)
     qualified = ib.qualifyContracts(contract)
+
+    # Fallback: resolve front-month explicitly
     if not qualified:
-        return None
+        contract = Future(symbol, exchange=exchange, currency=currency)
+        qualified = ib.qualifyContracts(contract)
+        if not qualified:
+            return None
 
     bars = ib.reqHistoricalData(
         contract,

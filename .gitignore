@@ -3,3 +3,7 @@
 __pycache__/
 Chroma/
 mcp-db-server/
+.env
+*.env
+.venv/
+.claude/
