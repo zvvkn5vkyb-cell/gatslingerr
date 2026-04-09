@@ -8,13 +8,24 @@ from decimal import Decimal
 import asyncpg
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pathlib import Path
 
 DATABASE_URL = "postgresql://admin:admin@localhost:5432/financial_db"
 
 app = FastAPI(title="GatSlinger Dashboard API")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://pro.openbb.co",
+        "https://openbb.co",
+        "http://localhost:1420",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 pool = None
 
@@ -224,6 +235,203 @@ async def pnl_stream(fund_name: str):
                 break
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/apps.json")
+def get_apps():
+    return JSONResponse(content={})
+
+
+@app.get("/widgets.json")
+def get_widgets():
+    widgets = {
+        "fund_overview": {
+            "name": "Fund Overview",
+            "description": "High-level summary of all funds",
+            "endpoint": "/api/fund-overview",
+            "data": {
+                "dataKey": "",
+                "table": {
+                    "enableCharts": True,
+                    "showAll": True,
+                    "columnsDefs": [
+                        {"field": "fund_name", "headerName": "Fund", "cellDataType": "text"},
+                    ],
+                },
+            },
+            "params": [],
+        },
+        "positions": {
+            "name": "Positions",
+            "description": "Current position summary for a fund",
+            "endpoint": "/api/positions/{fund_name}",
+            "data": {
+                "dataKey": "",
+                "table": {
+                    "enableCharts": True,
+                    "showAll": True,
+                    "columnsDefs": [
+                        {"field": "fund_name", "headerName": "Fund", "cellDataType": "text"},
+                        {"field": "market_value", "headerName": "Market Value", "cellDataType": "number"},
+                    ],
+                },
+            },
+            "params": [
+                {"type": "text", "paramName": "fund_name", "value": "", "label": "Fund Name"},
+            ],
+        },
+        "pnl": {
+            "name": "Daily P&L",
+            "description": "Daily profit and loss by position for a fund",
+            "endpoint": "/api/pnl/{fund_name}",
+            "data": {
+                "dataKey": "positions",
+                "table": {
+                    "enableCharts": True,
+                    "showAll": True,
+                    "columnsDefs": [
+                        {"field": "fund_name", "headerName": "Fund", "cellDataType": "text"},
+                        {"field": "daily_pnl", "headerName": "Daily P&L", "cellDataType": "number"},
+                    ],
+                },
+            },
+            "params": [
+                {"type": "text", "paramName": "fund_name", "value": "", "label": "Fund Name"},
+            ],
+        },
+        "nav_history": {
+            "name": "NAV History",
+            "description": "Historical NAV per unit for a fund",
+            "endpoint": "/api/nav-history/{fund_name}",
+            "data": {
+                "dataKey": "",
+                "table": {
+                    "enableCharts": True,
+                    "showAll": True,
+                    "columnsDefs": [
+                        {"field": "date", "headerName": "Date", "cellDataType": "date"},
+                        {"field": "nav_per_unit", "headerName": "NAV Per Unit", "cellDataType": "number"},
+                    ],
+                },
+            },
+            "params": [
+                {"type": "text", "paramName": "fund_name", "value": "", "label": "Fund Name"},
+                {"type": "number", "paramName": "days", "value": 90, "label": "Days"},
+            ],
+        },
+        "investors": {
+            "name": "Investor Allocation",
+            "description": "Investor allocation breakdown for a fund",
+            "endpoint": "/api/investors/{fund_name}",
+            "data": {
+                "dataKey": "",
+                "table": {
+                    "enableCharts": True,
+                    "showAll": True,
+                    "columnsDefs": [
+                        {"field": "fund_name", "headerName": "Fund", "cellDataType": "text"},
+                        {"field": "allocation_value", "headerName": "Allocation Value", "cellDataType": "number"},
+                    ],
+                },
+            },
+            "params": [
+                {"type": "text", "paramName": "fund_name", "value": "", "label": "Fund Name"},
+            ],
+        },
+        "alerts": {
+            "name": "Active Alerts",
+            "description": "Active risk and compliance alerts across all funds",
+            "endpoint": "/api/alerts",
+            "data": {
+                "dataKey": "",
+                "table": {
+                    "enableCharts": False,
+                    "showAll": True,
+                    "columnsDefs": [
+                        {"field": "severity", "headerName": "Severity", "cellDataType": "text"},
+                        {"field": "alert_date", "headerName": "Date", "cellDataType": "date"},
+                    ],
+                },
+            },
+            "params": [],
+        },
+        "returns": {
+            "name": "Rolling Returns",
+            "description": "Rolling return metrics for a fund",
+            "endpoint": "/api/returns/{fund_name}",
+            "data": {
+                "dataKey": "",
+                "table": {
+                    "enableCharts": True,
+                    "showAll": True,
+                    "columnsDefs": [
+                        {"field": "fund_name", "headerName": "Fund", "cellDataType": "text"},
+                    ],
+                },
+            },
+            "params": [
+                {"type": "text", "paramName": "fund_name", "value": "", "label": "Fund Name"},
+            ],
+        },
+        "fees": {
+            "name": "Fee Summary",
+            "description": "Management and performance fee history for a fund",
+            "endpoint": "/api/fees/{fund_name}",
+            "data": {
+                "dataKey": "",
+                "table": {
+                    "enableCharts": True,
+                    "showAll": True,
+                    "columnsDefs": [
+                        {"field": "date", "headerName": "Date", "cellDataType": "date"},
+                        {"field": "fund_name", "headerName": "Fund", "cellDataType": "text"},
+                    ],
+                },
+            },
+            "params": [
+                {"type": "text", "paramName": "fund_name", "value": "", "label": "Fund Name"},
+            ],
+        },
+        "investor_performance": {
+            "name": "Investor Performance",
+            "description": "Net return per investor for a fund",
+            "endpoint": "/api/investor-performance/{fund_name}",
+            "data": {
+                "dataKey": "",
+                "table": {
+                    "enableCharts": True,
+                    "showAll": True,
+                    "columnsDefs": [
+                        {"field": "fund_name", "headerName": "Fund", "cellDataType": "text"},
+                        {"field": "net_return_pct", "headerName": "Net Return %", "cellDataType": "number"},
+                    ],
+                },
+            },
+            "params": [
+                {"type": "text", "paramName": "fund_name", "value": "", "label": "Fund Name"},
+            ],
+        },
+        "hwm_audit": {
+            "name": "High-Water Mark Audit",
+            "description": "Per-investor HWM and accrued performance fee audit",
+            "endpoint": "/api/hwm-audit/{fund_name}",
+            "data": {
+                "dataKey": "",
+                "table": {
+                    "enableCharts": False,
+                    "showAll": True,
+                    "columnsDefs": [
+                        {"field": "fund_name", "headerName": "Fund", "cellDataType": "text"},
+                        {"field": "accrued_perf_fee", "headerName": "Accrued Perf Fee", "cellDataType": "number"},
+                    ],
+                },
+            },
+            "params": [
+                {"type": "text", "paramName": "fund_name", "value": "", "label": "Fund Name"},
+            ],
+        },
+    }
+    return JSONResponse(content=widgets)
 
 
 if __name__ == "__main__":
