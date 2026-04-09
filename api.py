@@ -14,14 +14,16 @@ from pathlib import Path
 DATABASE_URL = "postgresql://admin:admin@localhost:5432/financial_db"
 
 app = FastAPI(title="GatSlinger Dashboard API")
+origins = [
+    "https://pro.openbb.co",
+    "http://localhost",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://pro.openbb.co",
-        "https://openbb.co",
-        "http://localhost:1420",
-        "http://localhost:3000",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
