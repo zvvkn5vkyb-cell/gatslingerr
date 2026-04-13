@@ -7,6 +7,16 @@
         "--database-url",
         "postgresql+asyncpg://chadh.@localhost:5432/financial_db"
       ]
+    },
+    "chroma": {
+      "command": "uvx",
+      "args": [
+        "chroma-mcp",
+        "--client-type",
+        "persistent",
+        "--data-dir",
+        "C:/Users/chadh/.claude-mem/chroma"
+      ]
     }
   }
 }
