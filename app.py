@@ -3,6 +3,7 @@
 # ibkr.py handles the critical event-loop-before-import dance.
 # Import it first so ib_insync gets a valid loop.
 from ibkr import IB, safe_float, fmt_money, fmt_pct, get_ibkr_bars
+from tradingview import tv_health_check
 
 import streamlit as st
 import pandas as pd
@@ -60,6 +61,17 @@ if db:
     st.sidebar.caption("PostgreSQL: connected")
 else:
     st.sidebar.warning("PostgreSQL: offline")
+
+# ── TradingView connectivity ──────────────────────────────────
+@st.cache_data(ttl=30)
+def _cached_tv_health():
+    return tv_health_check()
+
+_tv = _cached_tv_health()
+if _tv["connected"]:
+    st.sidebar.caption(f"TradingView: connected ({_tv['latency_ms']} ms)")
+else:
+    st.sidebar.warning(f"TradingView: offline — {_tv['error']}")
 
 funds = q("SELECT * FROM monitoring.fund_overview") if db else []
 fund_names = [f["fund_name"] for f in funds]
