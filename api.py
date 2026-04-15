@@ -63,6 +63,13 @@ async def health():
         return {"status": "error", "db": str(e)}
 
 
+@app.get("/api/tv-health")
+async def tv_health():
+    from tradingview import tv_health_check
+    result = await asyncio.to_thread(tv_health_check)
+    return result
+
+
 @app.get("/api/fund-overview")
 async def fund_overview():
     return await query("SELECT * FROM monitoring.fund_overview")
