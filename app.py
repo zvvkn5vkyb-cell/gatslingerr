@@ -12,6 +12,7 @@ from db import get_db, q
 from risk import render_risk_and_pnl_module
 from strategy_manager import render_strategy_manager, get_active_strategies
 from orb_strategy import generate_orb_signal, TradeState, update_retest_state, check_exit
+from nav_summary import render_nav_summary
 
 st.set_page_config(page_title="GatSlinger", layout="wide")
 
@@ -68,7 +69,7 @@ active_fund = st.sidebar.selectbox("Fund", fund_names) if fund_names else None
 st.sidebar.divider()
 page = st.sidebar.radio(
     "Section",
-    ["Trading Dashboard", "Strategy Manager"],
+    ["Trading Dashboard", "Strategy Manager", "NAV Summary (AI)"],
     label_visibility="collapsed",
 )
 
@@ -84,6 +85,10 @@ st.title("GatSlinger")
 
 if page == "Strategy Manager":
     render_strategy_manager()
+    st.stop()
+
+if page == "NAV Summary (AI)":
+    render_nav_summary(active_fund, funds)
     st.stop()
 
 ib = st.session_state.ib
