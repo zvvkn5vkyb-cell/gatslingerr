@@ -42,8 +42,11 @@ docker-compose up -d
 ### Run the dashboard
 
 ```powershell
-streamlit run app.py
+python -m streamlit run app.py
 ```
+
+> If you see `'streamlit' is not recognized`, use `python -m streamlit run app.py`.
+> This works even when the `streamlit` command isn't on your PATH.
 
 ### Run the API server
 
