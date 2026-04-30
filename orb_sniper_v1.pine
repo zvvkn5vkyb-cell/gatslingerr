@@ -12,13 +12,21 @@ timezone = input.string("America/New_York", title="Timezone", group=grp_time)
 grp_quant = "Quantitative Filters"
 atr_length = input.int(14, title="ATR Length", group=grp_quant)
 use_atr_filter = input.bool(true, title="Use ATR Range Filter", group=grp_quant)
-max_atr_mult = input.float(4.0, title="Max ORB/ATR Multiplier", step=0.25, group=grp_quant)
+max_atr_mult = input.float(5.0, title="Max ORB/ATR Multiplier", step=0.25, group=grp_quant)
+min_orb_points = input.float(8.0, title="Minimum ORB Range Points", step=0.25, group=grp_quant)
 retest_tol = input.float(0.10, title="Midpoint Tolerance Zone (% of ORB Range)", step=0.05, group=grp_quant)
 
 grp_logic = "Trade Logic"
 use_vwap_filter = input.bool(false, title="Use VWAP Filter", group=grp_logic)
 show_vwap = input.bool(false, title="Show VWAP", group=grp_logic)
 one_bias_per_session = input.bool(true, title="Lock First Breakout Bias Per Session", group=grp_logic)
+breakout_buffer_ticks = input.int(2, title="Breakout Buffer Ticks", minval=0, group=grp_logic)
+one_retest_per_session = input.bool(true, title="Only Show First Retest Per Session", group=grp_logic)
+
+grp_visual = "Visual Settings"
+show_status_label = input.bool(true, title="Show Status Label", group=grp_visual)
+show_orb_window = input.bool(true, title="Shade ORB Window", group=grp_visual)
+show_invalid_bg = input.bool(true, title="Shade Invalid ORB Sessions", group=grp_visual)
 
 // =========================================================================
 // SESSION LOGIC
@@ -43,6 +51,7 @@ var float orb_range = na
 var float session_atr = na
 var bool orb_finalized = false
 var bool is_valid_orb = false
+var bool retest_taken = false
 var int dir_bias = 0
 
 current_atr = ta.atr(atr_length)
@@ -56,6 +65,7 @@ if new_orb
     session_atr := na
     orb_finalized := false
     is_valid_orb := false
+    retest_taken := false
     dir_bias := 0
 
 // Build ORB during the ORB window.
@@ -67,9 +77,13 @@ if in_orb
 if end_orb
     orb_mid := (orb_high + orb_low) / 2
     orb_range := orb_high - orb_low
-    session_atr := current_atr
+    session_atr := current_atr[1]
     orb_finalized := true
-    is_valid_orb := not na(orb_range) and not na(session_atr) and orb_range > 0 and (not use_atr_filter or orb_range <= session_atr * max_atr_mult)
+
+    range_large_enough = not na(orb_range) and orb_range >= min_orb_points
+    range_not_too_large = not use_atr_filter or orb_range <= session_atr * max_atr_mult
+
+    is_valid_orb := not na(orb_range) and not na(session_atr) and orb_range > 0 and range_large_enough and range_not_too_large
 
 // Clear directional bias after trading session ends.
 if end_trade
@@ -96,8 +110,12 @@ short_filter_ok = use_vwap_filter ? below_vwap : true
 // =========================================================================
 can_trade = in_trade and not in_orb and orb_finalized and is_valid_orb and not na(orb_high) and not na(orb_low)
 
-break_long_raw = can_trade and long_filter_ok and ta.crossover(close, orb_high)
-break_short_raw = can_trade and short_filter_ok and ta.crossunder(close, orb_low)
+breakout_buffer = breakout_buffer_ticks * syminfo.mintick
+long_trigger = orb_high + breakout_buffer
+short_trigger = orb_low - breakout_buffer
+
+break_long_raw = can_trade and long_filter_ok and ta.crossover(close, long_trigger)
+break_short_raw = can_trade and short_filter_ok and ta.crossunder(close, short_trigger)
 
 break_long = one_bias_per_session ? break_long_raw and dir_bias == 0 : break_long_raw
 break_short = one_bias_per_session ? break_short_raw and dir_bias == 0 : break_short_raw
@@ -108,8 +126,15 @@ if break_long
 if break_short
     dir_bias := -1
 
-retest_long = can_trade and dir_bias == 1 and not na(zone_upper) and not na(zone_lower) and high[1] > zone_upper and low <= zone_upper and low >= zone_lower and close > open
-retest_short = can_trade and dir_bias == -1 and not na(zone_upper) and not na(zone_lower) and low[1] < zone_lower and high >= zone_lower and high <= zone_upper and close < open
+zone_touched = not na(zone_upper) and not na(zone_lower) and low <= zone_upper and high >= zone_lower
+
+allow_retest = one_retest_per_session ? not retest_taken : true
+
+retest_long = can_trade and dir_bias == 1 and allow_retest and zone_touched and high[1] > zone_upper and close > open and close > orb_mid
+retest_short = can_trade and dir_bias == -1 and allow_retest and zone_touched and low[1] < zone_lower and close < open and close < orb_mid
+
+if retest_long or retest_short
+    retest_taken := true
 
 // =========================================================================
 // PLOTTING
@@ -131,14 +156,17 @@ p_z_dn = plot(in_trade and orb_finalized ? zone_lower : na, title="Zone Lower", 
 
 fill(p_z_up, p_z_dn, color=color.new(orb_mid_color, 88), title="Retest Zone Fill")
 
+plot(long_trigger, title="Long Breakout Trigger", color=color.new(color.lime, 65), style=plot.style_linebr, linewidth=1)
+plot(short_trigger, title="Short Breakout Trigger", color=color.new(color.red, 65), style=plot.style_linebr, linewidth=1)
+
 plotshape(break_long, title="Breakout Long", style=shape.triangleup, location=location.belowbar, color=color.lime, size=size.small, text="BO")
 plotshape(break_short, title="Breakout Short", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small, text="BO")
 
 plotshape(retest_long, title="Retest Long", style=shape.labelup, location=location.belowbar, color=color.lime, text="RETEST", textcolor=color.black, size=size.tiny)
 plotshape(retest_short, title="Retest Short", style=shape.labeldown, location=location.abovebar, color=color.red, text="RETEST", textcolor=color.white, size=size.tiny)
 
-bgcolor(in_orb ? color.new(color.blue, 88) : na, title="ORB Window")
-bgcolor(in_trade and orb_finalized and not is_valid_orb ? color.new(color.orange, 90) : na, title="Invalid ORB Warning")
+bgcolor(show_orb_window and in_orb ? color.new(color.blue, 88) : na, title="ORB Window")
+bgcolor(show_invalid_bg and in_trade and orb_finalized and not is_valid_orb ? color.new(color.orange, 90) : na, title="Invalid ORB Warning")
 
 // =========================================================================
 // STATUS LABEL
@@ -147,11 +175,15 @@ var label status_label = na
 
 if barstate.islast
     label.delete(status_label)
-    status_text = not orb_finalized ? "ORB NOT FORMED YET" : is_valid_orb ? "ORB VALID" : "ORB FORMED BUT INVALID"
-    status_text := status_text + "\nHigh: " + str.tostring(orb_high, format.mintick)
-    status_text := status_text + "\nLow: " + str.tostring(orb_low, format.mintick)
-    status_text := status_text + "\nMid: " + str.tostring(orb_mid, format.mintick)
-    status_text := status_text + "\nRange: " + str.tostring(orb_range, format.mintick)
-    status_text := status_text + "\nATR: " + str.tostring(session_atr, format.mintick)
-    status_text := status_text + "\nMax Allowed: " + str.tostring(session_atr * max_atr_mult, format.mintick)
-    status_label := label.new(bar_index, high, status_text, style=label.style_label_down, textcolor=color.white, color=color.new(color.black, 0))
+    if show_status_label
+        status_text = not orb_finalized ? "ORB NOT FORMED YET" : is_valid_orb ? "ORB VALID" : "ORB FORMED BUT INVALID"
+        status_text := status_text + "\nHigh: " + str.tostring(orb_high, format.mintick)
+        status_text := status_text + "\nLow: " + str.tostring(orb_low, format.mintick)
+        status_text := status_text + "\nMid: " + str.tostring(orb_mid, format.mintick)
+        status_text := status_text + "\nRange: " + str.tostring(orb_range, format.mintick)
+        status_text := status_text + "\nATR: " + str.tostring(session_atr, format.mintick)
+        status_text := status_text + "\nMax Allowed: " + str.tostring(session_atr * max_atr_mult, format.mintick)
+        status_text := status_text + "\nMin Required: " + str.tostring(min_orb_points, format.mintick)
+        status_text := status_text + "\nLong Trigger: " + str.tostring(long_trigger, format.mintick)
+        status_text := status_text + "\nShort Trigger: " + str.tostring(short_trigger, format.mintick)
+        status_label := label.new(bar_index, high, status_text, style=label.style_label_down, textcolor=color.white, color=color.new(color.black, 0))
