@@ -5,107 +5,142 @@ indicator("ORB Sniper V1 - Quantified", overlay=true, max_lines_count=500, max_l
 // INPUTS
 // =========================================================================
 grp_time      = "Session Settings"
-orb_session   = input.session("0800-0815",       title="ORB Session",                                          group=grp_time)
-trade_session = input.session("0815-1600",       title="Trading Session",                                      group=grp_time)
-timezone      = input.string("America/New_York", title="Timezone",                                             group=grp_time)
+orb_session   = input.session("0930-0945",       title="ORB Session",      group=grp_time)
+trade_session = input.session("0945-1600",       title="Trading Session",   group=grp_time)
+timezone      = input.string("America/New_York", title="Timezone",          group=grp_time)
 
 grp_quant    = "Quantitative Filters"
-atr_length   = input.int(14,    title="ATR Length",                                              group=grp_quant)
-max_atr_mult = input.float(1.5, title="Max ORB/ATR Multiplier (Disqualifies 'Big' ORBs)", step=0.1,  group=grp_quant)
-retest_tol   = input.float(0.10, title="Midpoint Tolerance Zone (% of ORB Range)",        step=0.05, group=grp_quant)
+atr_length   = input.int(14,    title="ATR Length",                                        group=grp_quant)
+max_atr_mult = input.float(1.5, title="Max ORB/ATR Multiplier",             step=0.1,      group=grp_quant)
+retest_tol   = input.float(0.10, title="Midpoint Tolerance Zone (% of ORB Range)", step=0.05, group=grp_quant)
+
+grp_logic            = "Trade Logic"
+use_vwap_filter      = input.bool(false, title="Use VWAP Filter",                   group=grp_logic)
+show_vwap            = input.bool(false, title="Show VWAP",                         group=grp_logic)
+one_bias_per_session = input.bool(true,  title="Lock First Breakout Bias Per Session", group=grp_logic)
 
 // =========================================================================
-// SESSION & ORB CALCULATION
+// SESSION LOGIC
 // =========================================================================
-in_orb    = time(timeframe.period, orb_session,   timezone)
-in_trade  = time(timeframe.period, trade_session, timezone)
+in_orb_raw   = time(timeframe.period, orb_session,   timezone)
+in_trade_raw = time(timeframe.period, trade_session, timezone)
+
+in_orb   = not na(in_orb_raw)
+in_trade = not na(in_trade_raw)
+
 new_orb   = in_orb   and not in_orb[1]
 end_orb   = not in_orb   and in_orb[1]
 end_trade = not in_trade and in_trade[1]
 
+// =========================================================================
+// ORB STATE
+// =========================================================================
 var float orb_high    = na
 var float orb_low     = na
 var float orb_mid     = na
 var float orb_range   = na
 var float session_atr = na
-var bool  is_valid_orb = false  // stays false until a full ORB session completes and passes ATR filter
-var int   dir_bias     = 0      // 1 = Long bias, -1 = Short bias
+var bool  is_valid_orb = false
+var int   dir_bias     = 0
 
 current_atr = ta.atr(atr_length)
 
-// Consolidate all per-session resets into one new_orb block
+// Reset at the start of each ORB window
 if new_orb
     orb_high     := high
     orb_low      := low
-    is_valid_orb := true
+    orb_mid      := na
+    orb_range    := na
+    session_atr  := na
+    is_valid_orb := false
     dir_bias     := 0
-else if in_orb
-    orb_high := math.max(orb_high, high)
-    orb_low  := math.min(orb_low,  low)
 
+// Build ORB during the ORB window
+if in_orb
+    orb_high := na(orb_high) ? high : math.max(orb_high, high)
+    orb_low  := na(orb_low)  ? low  : math.min(orb_low,  low)
+
+// Finalize ORB after the ORB window closes
 if end_orb
-    orb_mid     := (orb_high + orb_low) / 2
-    orb_range   := orb_high - orb_low
-    session_atr := current_atr  // end_orb fires on first bar after ORB; current_atr is accurate here
-    if orb_range > (session_atr * max_atr_mult)
-        is_valid_orb := false
+    orb_mid      := (orb_high + orb_low) / 2
+    orb_range    := orb_high - orb_low
+    session_atr  := current_atr
+    is_valid_orb := not na(orb_range) and not na(session_atr) and orb_range > 0 and orb_range <= session_atr * max_atr_mult
 
-// Prevent stale bias carrying overnight into the next session
+// Clear directional bias after trading session ends
 if end_trade
     dir_bias := 0
 
 // =========================================================================
-// MIDPOINT RETEST ZONE
+// RETEST ZONE
 // =========================================================================
-zone_upper = orb_mid + (orb_range * retest_tol)
-zone_lower = orb_mid - (orb_range * retest_tol)
+zone_upper = not na(orb_mid) and not na(orb_range) ? orb_mid + orb_range * retest_tol : na
+zone_lower = not na(orb_mid) and not na(orb_range) ? orb_mid - orb_range * retest_tol : na
 
 // =========================================================================
-// INDICATORS (VWAP)
+// VWAP FILTER
 // =========================================================================
 vwap_val   = ta.vwap(hlc3)
 above_vwap = close > vwap_val
 below_vwap = close < vwap_val
 
+long_filter_ok  = use_vwap_filter ? above_vwap : true
+short_filter_ok = use_vwap_filter ? below_vwap : true
+
 // =========================================================================
-// STATE TRACKING & SIGNAL LOGIC
+// SIGNAL LOGIC
 // =========================================================================
-// 1. Breakout Logic
-break_long  = in_trade and is_valid_orb and above_vwap and ta.crossover(close, orb_high)
-break_short = in_trade and is_valid_orb and below_vwap and ta.crossunder(close, orb_low)
+can_trade = in_trade and not in_orb and is_valid_orb and not na(orb_high) and not na(orb_low)
+
+break_long_raw  = can_trade and long_filter_ok  and ta.crossover(close,  orb_high)
+break_short_raw = can_trade and short_filter_ok and ta.crossunder(close, orb_low)
+
+break_long  = one_bias_per_session ? break_long_raw  and dir_bias == 0 : break_long_raw
+break_short = one_bias_per_session ? break_short_raw and dir_bias == 0 : break_short_raw
 
 if break_long
     dir_bias := 1
 if break_short
     dir_bias := -1
 
-// 2. Retest Logic — prior bar must have been outside the zone so the wick enters from outside
-// Long Retest: prior high was above zone, this bar's low dips into zone and candle closes bullish
-retest_long  = in_trade and dir_bias == 1  and high[1] > zone_upper and low  <= zone_upper and low  >= zone_lower and close > open
-// Short Retest: prior low was below zone, this bar's high wicks into zone and candle closes bearish
-retest_short = in_trade and dir_bias == -1 and low[1]  < zone_lower and high >= zone_lower and high <= zone_upper and close < open
+retest_long  = can_trade and dir_bias == 1  and not na(zone_upper) and not na(zone_lower) and high[1] > zone_upper and low  <= zone_upper and low  >= zone_lower and close > open
+retest_short = can_trade and dir_bias == -1 and not na(zone_upper) and not na(zone_lower) and low[1]  < zone_lower and high >= zone_lower and high <= zone_upper and close < open
 
 // =========================================================================
 // PLOTTING
 // =========================================================================
-plot(vwap_val, title="VWAP", color=color.white, linewidth=2)
+show_orb_levels = in_orb or in_trade
 
-// Plot ORB Levels
-p_high = plot(in_trade or in_orb ? orb_high : na, title="ORB High", color=is_valid_orb ? color.blue : color.gray, style=plot.style_linebr, linewidth=2)
-p_low  = plot(in_trade or in_orb ? orb_low  : na, title="ORB Low",  color=is_valid_orb ? color.blue : color.gray, style=plot.style_linebr, linewidth=2)
+plot(show_vwap ? vwap_val : na, title="VWAP", color=color.white, linewidth=2)
 
-// Plot Midpoint and Tolerance Zone
-p_mid  = plot(in_trade or in_orb ? orb_mid : na,           title="ORB Midpoint", color=color.purple,                style=plot.style_cross,  linewidth=1)
-p_z_up = plot(in_trade and is_valid_orb ? zone_upper : na, title="Zone Upper",   color=color.new(color.purple, 70), style=plot.style_linebr)
-p_z_dn = plot(in_trade and is_valid_orb ? zone_lower : na, title="Zone Lower",   color=color.new(color.purple, 70), style=plot.style_linebr)
-fill(p_z_up, p_z_dn, color=color.new(color.purple, 90), title="Retest Zone Fill")
+p_high = plot(show_orb_levels ? orb_high : na, title="ORB High", color=color.lime, style=plot.style_linebr, linewidth=3)
+p_low  = plot(show_orb_levels ? orb_low  : na, title="ORB Low",  color=color.red,  style=plot.style_linebr, linewidth=3)
+p_mid  = plot(in_trade and is_valid_orb ? orb_mid : na, title="ORB Midpoint", color=color.yellow, style=plot.style_linebr, linewidth=2)
 
-// Plot Signals
-plotshape(break_long,  title="Breakout Long",  style=shape.triangleup,  location=location.belowbar, color=color.green,  size=size.small)
-plotshape(break_short, title="Breakout Short", style=shape.triangledown, location=location.abovebar, color=color.red,    size=size.small)
+p_z_up = plot(in_trade and is_valid_orb ? zone_upper : na, title="Zone Upper", color=color.new(color.yellow, 60), style=plot.style_linebr, linewidth=1)
+p_z_dn = plot(in_trade and is_valid_orb ? zone_lower : na, title="Zone Lower", color=color.new(color.yellow, 60), style=plot.style_linebr, linewidth=1)
 
-plotshape(retest_long,  title="Retest Long",  style=shape.labelup,   location=location.belowbar, color=color.lime,   text="RETEST", textcolor=color.black, size=size.tiny)
-plotshape(retest_short, title="Retest Short", style=shape.labeldown, location=location.abovebar, color=color.maroon, text="RETEST", textcolor=color.white, size=size.tiny)
+fill(p_z_up, p_z_dn, color=color.new(color.yellow, 88), title="Retest Zone Fill")
 
-// Background tint when ORB is disqualified by ATR filter
-bgcolor(in_trade and not is_valid_orb ? color.new(color.red, 95) : na, title="Invalid ORB Warning")
+plotshape(break_long,  title="Breakout Long",  style=shape.triangleup,  location=location.belowbar, color=color.lime, size=size.small, text="BO")
+plotshape(break_short, title="Breakout Short", style=shape.triangledown, location=location.abovebar, color=color.red,  size=size.small, text="BO")
+
+plotshape(retest_long,  title="Retest Long",  style=shape.labelup,   location=location.belowbar, color=color.lime, text="RETEST", textcolor=color.black, size=size.tiny)
+plotshape(retest_short, title="Retest Short", style=shape.labeldown, location=location.abovebar, color=color.red,  text="RETEST", textcolor=color.white, size=size.tiny)
+
+bgcolor(in_orb ? color.new(color.blue, 88) : na, title="ORB Window")
+bgcolor(in_trade and not is_valid_orb and not na(orb_range) ? color.new(color.red, 90) : na, title="Invalid ORB Warning")
+
+// =========================================================================
+// STATUS LABEL
+// =========================================================================
+var label status_label = na
+
+if barstate.islast
+    label.delete(status_label)
+    status_text  = is_valid_orb ? "ORB VALID" : "ORB NOT VALID / NOT FORMED"
+    status_text := status_text + "\nHigh: "  + str.tostring(orb_high,  format.mintick)
+    status_text := status_text + "\nLow: "   + str.tostring(orb_low,   format.mintick)
+    status_text := status_text + "\nMid: "   + str.tostring(orb_mid,   format.mintick)
+    status_text := status_text + "\nRange: " + str.tostring(orb_range, format.mintick)
+    status_label := label.new(bar_index, high, status_text, style=label.style_label_down, textcolor=color.white, color=color.new(color.black, 0))
